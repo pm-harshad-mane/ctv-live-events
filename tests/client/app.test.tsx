@@ -1311,13 +1311,10 @@ describe("App", () => {
 
     expect(article).not.toBeNull();
     expect(
-      within(article as HTMLElement).getByText("Yet to start")
+      within(article as HTMLElement).getByText(/\d{1,2}\/\d{1,2}\/\d{4},/)
     ).toBeInTheDocument();
     expect(
       within(article as HTMLElement).getByText("Time left")
-    ).toBeInTheDocument();
-    expect(
-      within(article as HTMLElement).getByText(/Yet to start today at/i)
     ).toBeInTheDocument();
   });
 });

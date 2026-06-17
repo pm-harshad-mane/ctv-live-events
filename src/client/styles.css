@@ -27,64 +27,20 @@ select {
 }
 
 .hero {
-  display: grid;
-  grid-template-columns: minmax(0, 2.2fr) minmax(260px, 0.7fr);
-  gap: 32px;
-  align-items: end;
   margin-bottom: 22px;
 }
 
-.hero__kicker {
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: #ffb075;
-  font-size: 0.8rem;
-}
-
-.hero h1 {
-  margin: 0 0 12px;
-  font-size: clamp(2rem, 4.6vw, 3.8rem);
-  line-height: 0.96;
-  max-width: 24ch;
-}
-
-.hero__copy {
-  max-width: 40ch;
-  color: #c0cbdd;
+.hero__app-name {
   margin: 0;
 }
 
-.hero__meta {
-  display: grid;
-  gap: 18px;
-  justify-items: end;
-}
-
-.hero__stats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  width: 100%;
-}
-
-.hero__stats div {
-  padding: 16px 18px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.hero__stats strong {
-  display: block;
-  font-size: 1.8rem;
-  line-height: 1;
-}
-
-.hero__stats span {
-  display: block;
-  margin-top: 8px;
-  color: #c0cbdd;
-  font-size: 0.92rem;
+.hero__kicker,
+.hero__app-name {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #ffb075;
+  font-size: clamp(1.35rem, 2vw, 1.85rem);
+  font-weight: 800;
 }
 
 .page-controls {

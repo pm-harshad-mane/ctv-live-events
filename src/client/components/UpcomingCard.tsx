@@ -41,7 +41,7 @@ export const UpcomingCard = ({
     >
       <div className="event-card__eyebrow">
         <span>{event.context.match.tournament_name}</span>
-        <span>{startDetails.statusLabel}</span>
+        <span>{startDetails.startDisplay}</span>
       </div>
       <h3>{event.context.match.match_name}</h3>
       <div className="event-card__probability-band">
@@ -78,16 +78,6 @@ export const UpcomingCard = ({
           </strong>
         </div>
       </div>
-      <p className="event-card__summary">
-        {startDetails.isYetToStartToday
-          ? `Yet to start today at ${new Date(
-              event.context.match.scheduled_start_time
-            ).toLocaleTimeString([], {
-              hour: "numeric",
-              minute: "2-digit"
-            })}.`
-          : `Starts at ${startDetails.startDisplay}.`}
-      </p>
       <p className="event-card__upcoming-headline">
         {event.upcoming_intelligence.headline}
       </p>

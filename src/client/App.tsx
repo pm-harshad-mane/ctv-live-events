@@ -82,31 +82,7 @@ export const App = () => {
   return (
     <main className="page-shell">
       <section className="hero">
-        <div>
-          <p className="hero__kicker">Live Sports Intelligence</p>
-          <h1>
-            {activePage === "live"
-              ? "Track currently live matches with fast state refresh."
-              : "Review upcoming matches with pre-match intelligence."}
-          </h1>
-        </div>
-        <div className="hero__meta">
-          <p className="hero__copy">
-            {activePage === "live"
-              ? "The live page focuses on discovery, score updates, and rapid match inspection."
-              : "The upcoming page focuses on context, projected competitiveness, and win probabilities."}
-          </p>
-          <div className="hero__stats">
-            <div>
-              <strong>{events.length}</strong>
-              <span>Live matches</span>
-            </div>
-            <div>
-              <strong>{upcomingEvents.length}</strong>
-              <span>Upcoming spotlight</span>
-            </div>
-          </div>
-        </div>
+        <h1 className="hero__app-name">Live Sports Intelligence</h1>
       </section>
 
       <div className="page-controls">

@@ -392,6 +392,14 @@ const buildWarningsWithOptionalMissingSearch = (
   return warnings;
 };
 
+const withResultFilteringDebug = (
+  providerDebug: ProviderDebugInfo,
+  summary: ProviderDebugInfo["result_filtering"]
+): ProviderDebugInfo => ({
+  ...providerDebug,
+  result_filtering: summary
+});
+
 export class StructuredSearchLiveEventDiscoveryProvider implements LiveEventDiscoveryProvider {
   constructor(
     private readonly transport: StructuredResponseTransport,
@@ -428,28 +436,38 @@ export class StructuredSearchLiveEventDiscoveryProvider implements LiveEventDisc
       this.flavor
     );
 
-    const events = Array.isArray(payload.events)
-      ? payload.events
-          .map((event) =>
-            liveEventSchema.parse(
-              normalizeLiveEventCandidate(
-                event,
-                this.flavor.responseObjectLabel
-              )
-            )
+    const rawEvents = Array.isArray(payload.events)
+      ? payload.events.map((event) =>
+          liveEventSchema.parse(
+            normalizeLiveEventCandidate(event, this.flavor.responseObjectLabel)
           )
-          .filter((event) =>
-            matchesRequestedSport(input.sport, event.context?.match.sport)
-          )
+        )
       : [];
 
     const acceptedEvents: LiveEvent[] = [];
-    for (const event of events) {
+    const rejectedEvents: NonNullable<
+      ProviderDebugInfo["result_filtering"]
+    >["rejected_events"] = [];
+    for (const event of rawEvents) {
+      if (!matchesRequestedSport(input.sport, event.context?.match.sport)) {
+        rejectedEvents.push({
+          match_id: event.match_id,
+          match_name: event.context?.match.match_name,
+          reason: `Filtered out because event sport=${event.context?.match.sport ?? "unknown"} did not match requested sport=${input.sport}.`
+        });
+        continue;
+      }
+
       const quality = assessLiveEventQuality(event);
       if (quality.accepted) {
         acceptedEvents.push(event);
         continue;
       }
+      rejectedEvents.push({
+        match_id: event.match_id,
+        match_name: event.context?.match.match_name,
+        reason: quality.reason ?? "Live event did not meet the quality gate."
+      });
       warnings.push(
         `${event.context?.match.match_name ?? event.match_id} was excluded from live results: ${quality.reason}`
       );
@@ -458,7 +476,11 @@ export class StructuredSearchLiveEventDiscoveryProvider implements LiveEventDisc
     return {
       events: acceptedEvents,
       warnings,
-      provider_debug: providerDebug
+      provider_debug: withResultFilteringDebug(providerDebug, {
+        raw_event_count: rawEvents.length,
+        accepted_event_count: acceptedEvents.length,
+        rejected_events: rejectedEvents
+      })
     };
   }
 }
@@ -661,27 +683,42 @@ export class StructuredSearchUpcomingEventProvider implements UpcomingEventProvi
       };
     }
 
+    const rawEvents = Array.isArray(payload.events)
+      ? payload.events.map((event) =>
+          upcomingEventSchema.parse(
+            normalizeUpcomingEventCandidate(event, this.flavor.responseObjectLabel)
+          )
+        )
+      : [];
+    const acceptedEvents: UpcomingEvent[] = [];
+    const rejectedEvents: NonNullable<
+      ProviderDebugInfo["result_filtering"]
+    >["rejected_events"] = [];
+
+    for (const event of rawEvents) {
+      if (!matchesRequestedSport(input.sport, event.context.match.sport)) {
+        rejectedEvents.push({
+          match_id: event.match_id,
+          match_name: event.context.match.match_name,
+          reason: `Filtered out because event sport=${event.context.match.sport} did not match requested sport=${input.sport}.`
+        });
+        continue;
+      }
+      acceptedEvents.push(event);
+    }
+
     return {
-      events: Array.isArray(payload.events)
-        ? payload.events
-            .map((event) =>
-              upcomingEventSchema.parse(
-                normalizeUpcomingEventCandidate(
-                  event,
-                  this.flavor.responseObjectLabel
-                )
-              )
-            )
-            .filter((event) =>
-              matchesRequestedSport(input.sport, event.context.match.sport)
-            )
-        : [],
+      events: acceptedEvents,
       warnings: buildWarningsWithOptionalMissingSearch(
         payload,
         providerDebug,
         this.flavor
       ),
-      provider_debug: providerDebug
+      provider_debug: withResultFilteringDebug(providerDebug, {
+        raw_event_count: rawEvents.length,
+        accepted_event_count: acceptedEvents.length,
+        rejected_events: rejectedEvents
+      })
     };
   }
 

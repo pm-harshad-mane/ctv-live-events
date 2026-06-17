@@ -8,6 +8,15 @@ import type {
 } from "../schemas/live";
 
 export type ProviderDebugInfo = {
+  result_filtering?: {
+    raw_event_count: number;
+    accepted_event_count: number;
+    rejected_events: Array<{
+      match_id: string;
+      match_name?: string;
+      reason: string;
+    }>;
+  };
   openai_web_search?: {
     required: boolean;
     tool_invoked: boolean;
