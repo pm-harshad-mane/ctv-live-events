@@ -1,0 +1,4 @@
+AI_ENABLED=true
+USE_MOCK_DATA=true
+EXTERNAL_API_KEYS=dev-key-1,dev-key-2
+ALLOWED_API_ORIGINS=http://localhost:5173

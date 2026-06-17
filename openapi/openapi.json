@@ -1,0 +1,192 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "CTV Live Events API",
+    "version": "v1",
+    "description": "Local MVP API for live sports discovery and state refresh."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Service health"
+          }
+        }
+      }
+    },
+    "/api/v1/config": {
+      "get": {
+        "summary": "Public runtime configuration",
+        "responses": {
+          "200": {
+            "description": "Client configuration"
+          }
+        }
+      }
+    },
+    "/api/v1/events/live/discover": {
+      "get": {
+        "summary": "Convenience live discovery via query params",
+        "security": [
+          {
+            "ApiKeyBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Discovered events"
+          },
+          "503": {
+            "description": "AI usage disabled"
+          }
+        }
+      },
+      "post": {
+        "summary": "Discover live events and optionally return context",
+        "security": [
+          {
+            "ApiKeyBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Discovered events"
+          },
+          "503": {
+            "description": "AI usage disabled"
+          }
+        }
+      }
+    },
+    "/api/v1/events/live/state": {
+      "post": {
+        "summary": "Refresh live state for known matches",
+        "security": [
+          {
+            "ApiKeyBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "State refresh"
+          },
+          "503": {
+            "description": "AI usage disabled"
+          }
+        }
+      }
+    },
+    "/api/v1/events/live": {
+      "get": {
+        "summary": "Convenience endpoint returning complete live events",
+        "security": [
+          {
+            "ApiKeyBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Live event collection"
+          }
+        }
+      }
+    },
+    "/api/v1/events/live/{matchId}/context": {
+      "get": {
+        "summary": "Return static or slow-moving context for one live match",
+        "security": [
+          {
+            "ApiKeyBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Match context"
+          },
+          "404": {
+            "description": "Match not found"
+          }
+        }
+      }
+    },
+    "/api/v1/events/live/{matchId}/state": {
+      "get": {
+        "summary": "Return only the current dynamic state for one live match",
+        "security": [
+          {
+            "ApiKeyBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Live state"
+          },
+          "404": {
+            "description": "Match not found"
+          }
+        }
+      }
+    },
+    "/api/v1/events/upcoming": {
+      "get": {
+        "summary": "Return upcoming matches with context and pre-match intelligence",
+        "security": [
+          {
+            "ApiKeyBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Upcoming events"
+          },
+          "503": {
+            "description": "AI usage disabled"
+          }
+        }
+      }
+    },
+    "/api/v1/events/upcoming/{matchId}": {
+      "get": {
+        "summary": "Return one upcoming match by match ID",
+        "security": [
+          {
+            "ApiKeyBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Upcoming event"
+          },
+          "404": {
+            "description": "Upcoming match not found"
+          }
+        }
+      }
+    },
+    "/api/v1/openapi.json": {
+      "get": {
+        "summary": "OpenAPI document",
+        "responses": {
+          "200": {
+            "description": "OpenAPI JSON"
+          }
+        }
+      }
+    }
+  }
+}
