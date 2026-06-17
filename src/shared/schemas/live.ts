@@ -110,6 +110,22 @@ export const liveStateSchema = z.object({
     participant_id: z.string().nullable(),
     description: z.string()
   }),
+  active_players: z.array(
+    z.object({
+      player_id: z.string(),
+      player_name: z.string(),
+      participant_id: z.string(),
+      role: z.string(),
+      status: z.string(),
+      impact_summary: z.string(),
+      key_metrics: z.array(
+        z.object({
+          label: z.string(),
+          value: z.string()
+        })
+      )
+    })
+  ),
   what_is_happening: z.object({
     headline: z.string(),
     summary: z.string(),
@@ -268,13 +284,23 @@ export const upcomingQuerySchema = z.object({
   days: z.number().int().positive().max(30).default(7)
 });
 
+export const providerModeSchema = z.enum(["mock", "openai", "gemini"]);
+
+export const providerOptionSchema = z.object({
+  id: providerModeSchema,
+  label: z.string().min(1)
+});
+
 export const configSchema = z.object({
   api_version: z.literal("v1"),
   ai_service_available: z.boolean(),
   discovery_refresh_after_seconds: z.number().int().positive(),
   state_refresh_after_seconds: z.number().int().positive(),
   max_live_events: z.number().int().positive(),
-  public_api_access: z.boolean()
+  public_api_access: z.boolean(),
+  use_mock_data: z.boolean(),
+  active_model: providerModeSchema,
+  available_models: z.array(providerOptionSchema).min(1)
 });
 
 export type Participant = z.infer<typeof participantSchema>;
@@ -287,3 +313,5 @@ export type StateRefreshRequest = z.infer<typeof stateRefreshRequestSchema>;
 export type UpcomingEvent = z.infer<typeof upcomingEventSchema>;
 export type UpcomingQuery = z.infer<typeof upcomingQuerySchema>;
 export type PublicConfig = z.infer<typeof configSchema>;
+export type ProviderMode = z.infer<typeof providerModeSchema>;
+export type ProviderOption = z.infer<typeof providerOptionSchema>;

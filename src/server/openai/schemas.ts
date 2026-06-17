@@ -231,6 +231,36 @@ const liveStateSchema = objectSchema(
       },
       ["participant_id", "description"]
     ),
+    active_players: arraySchema(
+      objectSchema(
+        {
+          player_id: stringSchema,
+          player_name: stringSchema,
+          participant_id: stringSchema,
+          role: stringSchema,
+          status: stringSchema,
+          impact_summary: stringSchema,
+          key_metrics: arraySchema(
+            objectSchema(
+              {
+                label: stringSchema,
+                value: stringSchema
+              },
+              ["label", "value"]
+            )
+          )
+        },
+        [
+          "player_id",
+          "player_name",
+          "participant_id",
+          "role",
+          "status",
+          "impact_summary",
+          "key_metrics"
+        ]
+      )
+    ),
     what_is_happening: objectSchema(
       {
         headline: stringSchema,
@@ -400,6 +430,7 @@ const liveStateSchema = objectSchema(
     "score",
     "sport_specific",
     "current_possession_or_control",
+    "active_players",
     "what_is_happening",
     "last_major_event",
     "recent_events",

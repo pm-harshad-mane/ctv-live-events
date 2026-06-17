@@ -15,6 +15,13 @@ export type ProviderDebugInfo = {
     source_count: number;
     sources: string[];
   };
+  gemini_google_search?: {
+    required: boolean;
+    tool_invoked: boolean;
+    query_count: number;
+    source_count: number;
+    sources: string[];
+  };
 };
 
 export type ApiErrorCode =

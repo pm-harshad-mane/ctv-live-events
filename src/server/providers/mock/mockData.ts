@@ -116,6 +116,255 @@ const leadingParticipantId = (
     ? seed.identity.participants[0].participant_id
     : seed.identity.participants[1].participant_id;
 
+const buildActivePlayers = (
+  seed: MatchSeed,
+  sport: MatchIdentity["sport"],
+  minuteOffset: number
+): LiveState["active_players"] => {
+  const home = seed.identity.participants[0];
+  const away = seed.identity.participants[1];
+
+  switch (sport) {
+    case "basketball":
+      return [
+        {
+          player_id: `${home.participant_id}-lead-guard`,
+          player_name: `${home.name} Lead Guard`,
+          participant_id: home.participant_id,
+          role: "Primary ball handler",
+          status: "On court",
+          impact_summary:
+            "Driving the offense and creating the highest-leverage looks late.",
+          key_metrics: [
+            { label: "Points", value: `${24 + minuteOffset}` },
+            { label: "Assists", value: `${7 + (minuteOffset % 3)}` }
+          ]
+        },
+        {
+          player_id: `${away.participant_id}-wing-scorer`,
+          player_name: `${away.name} Wing Scorer`,
+          participant_id: away.participant_id,
+          role: "Primary scorer",
+          status: "On court",
+          impact_summary:
+            "Keeping the game close through shot creation and late-clock usage.",
+          key_metrics: [
+            { label: "Points", value: `${22 + minuteOffset}` },
+            { label: "3PT", value: `${3 + (minuteOffset % 3)}` }
+          ]
+        }
+      ];
+    case "soccer":
+      return [
+        {
+          player_id: `${home.participant_id}-forward`,
+          player_name: `${home.name} Central Forward`,
+          participant_id: home.participant_id,
+          role: "Attacker",
+          status: "Active",
+          impact_summary:
+            "Stretching the back line and staying involved in the biggest transitions.",
+          key_metrics: [
+            { label: "Shots", value: `${2 + (minuteOffset % 3)}` },
+            { label: "Touches box", value: `${5 + minuteOffset}` }
+          ]
+        },
+        {
+          player_id: `${away.participant_id}-keeper`,
+          player_name: `${away.name} Goalkeeper`,
+          participant_id: away.participant_id,
+          role: "Goalkeeper",
+          status: "Active",
+          impact_summary:
+            "Keeping the margin intact with high-leverage interventions.",
+          key_metrics: [
+            { label: "Saves", value: `${3 + (minuteOffset % 2)}` },
+            { label: "Claims", value: `${1 + (minuteOffset % 2)}` }
+          ]
+        }
+      ];
+    case "american-football":
+      return [
+        {
+          player_id: `${home.participant_id}-qb`,
+          player_name: `${home.name} Quarterback`,
+          participant_id: home.participant_id,
+          role: "Quarterback",
+          status: "Current drive",
+          impact_summary:
+            "Controlling the live possession and directing the tempo of the drive.",
+          key_metrics: [
+            { label: "Pass yds", value: `${248 + minuteOffset * 8}` },
+            { label: "TD", value: `${2 + (minuteOffset % 2)}` }
+          ]
+        },
+        {
+          player_id: `${away.participant_id}-edge`,
+          player_name: `${away.name} Edge Rusher`,
+          participant_id: away.participant_id,
+          role: "Pass rusher",
+          status: "On field",
+          impact_summary:
+            "Threatening the pocket and shaping down-and-distance decisions.",
+          key_metrics: [
+            { label: "Sacks", value: `${1 + (minuteOffset % 2)}` },
+            { label: "Pressures", value: `${5 + minuteOffset}` }
+          ]
+        }
+      ];
+    case "baseball":
+      return [
+        {
+          player_id: `${away.participant_id}-batter`,
+          player_name: `${away.name} Cleanup Hitter`,
+          participant_id: away.participant_id,
+          role: "Current batter",
+          status: "At plate",
+          impact_summary:
+            "Represents the biggest immediate run-producing threat in the inning.",
+          key_metrics: [
+            { label: "Count", value: "2-1" },
+            { label: "RBI", value: `${1 + (minuteOffset % 2)}` }
+          ]
+        },
+        {
+          player_id: `${home.participant_id}-pitcher`,
+          player_name: `${home.name} Late Reliever`,
+          participant_id: home.participant_id,
+          role: "Pitcher",
+          status: "On mound",
+          impact_summary:
+            "Trying to escape the inning without allowing the decisive run.",
+          key_metrics: [
+            { label: "Pitches", value: `${14 + minuteOffset}` },
+            { label: "K", value: `${2 + (minuteOffset % 2)}` }
+          ]
+        }
+      ];
+    case "cricket":
+      return [
+        {
+          player_id: `${home.participant_id}-striker`,
+          player_name: `${home.name} Set Batter`,
+          participant_id: home.participant_id,
+          role: "Striker",
+          status: "Batting",
+          impact_summary:
+            "Anchoring the chase while still able to clear the infield.",
+          key_metrics: [
+            { label: "Runs", value: `${46 + minuteOffset * 2}` },
+            { label: "Balls", value: `${31 + minuteOffset}` }
+          ]
+        },
+        {
+          player_id: `${away.participant_id}-bowler`,
+          player_name: `${away.name} Death Bowler`,
+          participant_id: away.participant_id,
+          role: "Bowler",
+          status: "Current over",
+          impact_summary:
+            "The live over is leaning on yorker execution and wicket pressure.",
+          key_metrics: [
+            { label: "Figures", value: `3-${28 + minuteOffset}` },
+            {
+              label: "Economy",
+              value: `${(7.2 + minuteOffset * 0.1).toFixed(1)}`
+            }
+          ]
+        }
+      ];
+    case "hockey":
+      return [
+        {
+          player_id: `${home.participant_id}-center`,
+          player_name: `${home.name} Top-Line Center`,
+          participant_id: home.participant_id,
+          role: "Center",
+          status: "On ice",
+          impact_summary:
+            "Driving offensive-zone entries and touch volume on the cycle.",
+          key_metrics: [
+            { label: "Shots", value: `${4 + (minuteOffset % 3)}` },
+            { label: "Faceoffs", value: `${8 + minuteOffset}` }
+          ]
+        },
+        {
+          player_id: `${away.participant_id}-goalie`,
+          player_name: `${away.name} Goaltender`,
+          participant_id: away.participant_id,
+          role: "Goalie",
+          status: "On ice",
+          impact_summary:
+            "Absorbing sustained pressure and keeping the margin from breaking open.",
+          key_metrics: [
+            { label: "Saves", value: `${24 + minuteOffset}` },
+            { label: "SV%", value: ".927" }
+          ]
+        }
+      ];
+    case "tennis":
+      return [
+        {
+          player_id: `${home.participant_id}-server`,
+          player_name: `${home.name}`,
+          participant_id: home.participant_id,
+          role: "Server",
+          status: "Serving",
+          impact_summary:
+            "Trying to hold through a tense service game and preserve scoreboard edge.",
+          key_metrics: [
+            { label: "1st serve", value: "67%" },
+            { label: "Winners", value: `${18 + minuteOffset}` }
+          ]
+        },
+        {
+          player_id: `${away.participant_id}-receiver`,
+          player_name: `${away.name}`,
+          participant_id: away.participant_id,
+          role: "Returner",
+          status: "Receiving",
+          impact_summary:
+            "Pressuring the second serve and forcing longer baseline exchanges.",
+          key_metrics: [
+            { label: "Break pts", value: `${1 + (minuteOffset % 2)}/4` },
+            { label: "Unforced", value: `${10 + minuteOffset}` }
+          ]
+        }
+      ];
+    case "mma":
+      return [
+        {
+          player_id: `${home.participant_id}-fighter`,
+          player_name: `${home.name}`,
+          participant_id: home.participant_id,
+          role: "Fighter",
+          status: "Pressuring",
+          impact_summary:
+            "Owning more of the cage position and forcing the cleaner exchanges.",
+          key_metrics: [
+            { label: "Control", value: `${48 + minuteOffset * 6}s` },
+            { label: "Sig. strikes", value: `${26 + minuteOffset}` }
+          ]
+        },
+        {
+          player_id: `${away.participant_id}-fighter`,
+          player_name: `${away.name}`,
+          participant_id: away.participant_id,
+          role: "Fighter",
+          status: "Responding",
+          impact_summary:
+            "Looking for clean counters and moments to reverse the round optics.",
+          key_metrics: [
+            { label: "Sig. strikes", value: `${21 + minuteOffset}` },
+            { label: "Takedown def.", value: "78%" }
+          ]
+        }
+      ];
+    default:
+      return [];
+  }
+};
+
 const buildBasketballState = (
   seed: MatchSeed,
   minuteOffset: number,
@@ -159,6 +408,7 @@ const buildBasketballState = (
           ? `${seed.identity.participants[0].name} is bringing the ball up in a half-court set`
           : `${seed.identity.participants[1].name} controls the possession after the latest score`
     },
+    active_players: buildActivePlayers(seed, seed.identity.sport, minuteOffset),
     what_is_happening: {
       headline: "Late-game pressure is rising",
       summary: `${seed.identity.participants[0].name} and ${seed.identity.participants[1].name} are in a tight finish.`,
@@ -302,6 +552,7 @@ const buildSoccerState = (
           ? `${seed.identity.participants[0].name} is holding territory in the attacking half`
           : `${seed.identity.participants[1].name} is circulating possession and forcing deeper defending`
     },
+    active_players: buildActivePlayers(seed, seed.identity.sport, minuteOffset),
     what_is_happening: {
       headline: isLevel
         ? "The match is level entering the final stretch"
@@ -452,6 +703,7 @@ const buildFootballState = (
       participant_id: possessionTeam,
       description: `${seed.identity.participants.find((participant) => participant.participant_id === possessionTeam)?.name} has the ball with the drive still alive`
     },
+    active_players: buildActivePlayers(seed, seed.identity.sport, minuteOffset),
     what_is_happening: {
       headline: "A one-possession NFL finish is developing",
       summary:
@@ -598,6 +850,7 @@ const buildBaseballState = (
       participant_id: battingSide,
       description: `${seed.identity.participants.find((participant) => participant.participant_id === battingSide)?.name} is at the plate with traffic on the bases`
     },
+    active_players: buildActivePlayers(seed, seed.identity.sport, minuteOffset),
     what_is_happening: {
       headline: "A late-inning scoring chance is building",
       summary:
@@ -738,6 +991,7 @@ const buildCricketState = (
       participant_id: battingSide,
       description: `${seed.identity.participants.find((participant) => participant.participant_id === battingSide)?.name} is batting with the required tempo still within reach`
     },
+    active_players: buildActivePlayers(seed, seed.identity.sport, minuteOffset),
     what_is_happening: {
       headline: "The chase rate is putting the middle overs under pressure",
       summary:
@@ -879,6 +1133,7 @@ const buildHockeyState = (
       description:
         "One side is sustaining offensive-zone time and forcing repeated resets"
     },
+    active_players: buildActivePlayers(seed, seed.identity.sport, minuteOffset),
     what_is_happening: {
       headline: "Sustained zone pressure is stretching the defensive structure",
       summary:
@@ -1017,6 +1272,7 @@ const buildTennisState = (
       participant_id: serveSide,
       description: `${seed.identity.participants.find((participant) => participant.participant_id === serveSide)?.name} is serving in a pressure game`
     },
+    active_players: buildActivePlayers(seed, seed.identity.sport, minuteOffset),
     what_is_happening: {
       headline: "A high-leverage service game is shaping the set",
       summary:
@@ -1151,6 +1407,7 @@ const buildMmaState = (
       participant_id: aggressor,
       description: `${seed.identity.participants.find((participant) => participant.participant_id === aggressor)?.name} is forcing the higher-pressure exchanges`
     },
+    active_players: buildActivePlayers(seed, seed.identity.sport, minuteOffset),
     what_is_happening: {
       headline: "The pace is stretching toward a potential finish window",
       summary:

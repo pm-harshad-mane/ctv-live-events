@@ -27,6 +27,10 @@ describe("API service and middleware", () => {
     return new LiveService(
       env,
       new EnvironmentAiAccessController(env.aiEnabled),
+      () => ({
+        activeMode: "mock",
+        availableOptions: [{ id: "mock", label: "MockData" }]
+      }),
       new MockLiveEventDiscoveryProvider(),
       new MockLiveEventStateProvider(),
       new MockLiveEventLookupProvider(),
@@ -40,6 +44,11 @@ describe("API service and middleware", () => {
 
     expect(config.api_version).toBe("v1");
     expect(config.ai_service_available).toBe(true);
+    expect(config.use_mock_data).toBe(true);
+    expect(config.active_model).toBe("mock");
+    expect(config.available_models).toEqual([
+      { id: "mock", label: "MockData" }
+    ]);
   });
 
   it("defaults public api access on for local mock development", () => {
@@ -155,6 +164,10 @@ describe("API service and middleware", () => {
     const service = new LiveService(
       env,
       new EnvironmentAiAccessController(false),
+      () => ({
+        activeMode: "mock",
+        availableOptions: [{ id: "mock", label: "MockData" }]
+      }),
       { discover },
       { refreshStates },
       { getLiveEvent, getContext, getState },

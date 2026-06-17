@@ -101,7 +101,7 @@ export const EventCard = ({
         className="event-card__action"
         onClick={() => onSelect(event.match_id)}
       >
-        {isSelected ? "Viewing details" : "Details"}
+        {isSelected ? "Viewing details" : "More Details"}
       </button>
     </article>
   );

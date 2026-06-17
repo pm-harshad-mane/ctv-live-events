@@ -20,6 +20,9 @@ const buildSupportedSportsRule = (sport: string): string =>
 const sportSpecificRule =
   "For live_state.sport_specific, use only these keys: quarter, shot_clock_seconds, foul_pressure, phase, stoppage_time_minutes, pressure_side, attacking_side, possession_team, down, distance_yards, yard_line, red_zone, inning, innings_half, outs, balls, strikes, runners_on_base, over, wickets, run_rate, target_runs, power_play, period_number, pulled_goalie, current_set, set_score, serve_side, break_point_pressure, round, control_time_seconds, finish_threat. Always include all keys, and use null for keys that do not apply to the current sport.";
 
+const activePlayersRule =
+  "For live_state.active_players, return the most relevant currently active players for the sport and moment. Examples: in cricket include the current batsmen and bowler; in basketball include the players currently driving the game; in american football include the quarterback or ball-carriers involved in the live drive; in baseball include the batter, pitcher, and key baserunners; in hockey include skaters or goalie shaping the phase; in tennis include the server and pressured opponent; in mma include the two fighters with the current control or finish threat. Each entry must include player_id, player_name, participant_id, role, status, impact_summary, and short key_metrics.";
+
 export const buildDiscoveryPrompt = (input: DiscoverRequest) => ({
   instructions: [
     "You are discovering currently live sports matches for a machine-readable sports intelligence API.",
@@ -29,6 +32,7 @@ export const buildDiscoveryPrompt = (input: DiscoverRequest) => ({
     "For each live match, return the combined live event object with context and live_state.",
     "Use context_status=new for newly discovered matches, unchanged when the supplied fingerprint is still valid, updated when context materially changed, and unavailable only when context cannot be verified.",
     sportSpecificRule,
+    activePlayersRule,
     "Keep freshness timestamps realistic and concise.",
     "Return warnings only when necessary.",
     outputFormattingRules
@@ -53,6 +57,7 @@ export const buildStateRefreshPrompt = (input: {
     "Do not repeat venue, rivalry history, full participant profiles, full head-to-head history, pre-match anticipation factors, or other static fields.",
     "For each supplied match: verify whether it is still live, return current status, score, progression, what is happening now, recent meaningful events, and updated excitement, criticality, competitive balance, momentum, and live predictions.",
     sportSpecificRule,
+    activePlayersRule,
     "If a match cannot be verified, omit it from states and add it to failed_matches with a concise code and message.",
     "Keep summaries concise and do not invent precision.",
     outputFormattingRules
@@ -71,6 +76,7 @@ export const buildLiveLookupPrompt = (matchId: string) => ({
     "The stable match_id encodes sport, competition, date, and participants.",
     "If you can verify the match, return one combined live event object.",
     sportSpecificRule,
+    activePlayersRule,
     "If you cannot verify the match, return event=null.",
     outputFormattingRules
   ].join(" "),
@@ -104,6 +110,7 @@ export const buildStateLookupPrompt = (matchId: string) => ({
     "Return only live_state if the match can be verified.",
     "Do not include static context fields in the response.",
     sportSpecificRule,
+    activePlayersRule,
     "If the match cannot be verified, return live_state=null.",
     outputFormattingRules
   ].join(" "),

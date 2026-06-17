@@ -11,17 +11,26 @@ import {
   MockUpcomingEventProvider
 } from "./providers/mock/mockProviders";
 import {
+  GeminiLiveEventDiscoveryProvider,
+  GeminiLiveEventLookupProvider,
+  GeminiLiveEventStateProvider,
+  GeminiUpcomingEventProvider
+} from "./providers/gemini/geminiProviders";
+import {
   OpenAiLiveEventDiscoveryProvider,
   OpenAiLiveEventLookupProvider,
   OpenAiLiveEventStateProvider,
   OpenAiUpcomingEventProvider
 } from "./providers/openai/openAiProviders";
 import { OpenAiResponsesTransport } from "./openai/transport";
+import { GeminiStructuredTransport } from "./gemini/transport";
 import { EnvironmentAiAccessController } from "./services/ai-access";
 import { AiDisabledError, LiveService } from "./services/live-service";
+import { RuntimeProviderState } from "./runtime/provider-state";
 import {
   configSchema,
   discoverRequestSchema,
+  providerModeSchema,
   stateRefreshRequestSchema,
   upcomingQuerySchema
 } from "../shared/schemas/live";
@@ -34,28 +43,62 @@ export const createApp = () => {
   app.use(express.json({ limit: "100kb" }));
   app.use(withCors(env));
 
-  const transport = new OpenAiResponsesTransport(env);
-  const providers = env.useMockData
-    ? {
-        discoveryProvider: new MockLiveEventDiscoveryProvider(),
-        stateProvider: new MockLiveEventStateProvider(),
-        lookupProvider: new MockLiveEventLookupProvider(),
-        upcomingProvider: new MockUpcomingEventProvider()
-      }
-    : {
-        discoveryProvider: new OpenAiLiveEventDiscoveryProvider(transport),
-        stateProvider: new OpenAiLiveEventStateProvider(transport),
-        lookupProvider: new OpenAiLiveEventLookupProvider(transport),
-        upcomingProvider: new OpenAiUpcomingEventProvider(transport)
-      };
+  const openAiTransport = new OpenAiResponsesTransport(env);
+  const geminiTransport = new GeminiStructuredTransport(env);
+  const runtimeProviderState = new RuntimeProviderState(env);
+  const providerBundles = {
+    mock: {
+      discoveryProvider: new MockLiveEventDiscoveryProvider(),
+      stateProvider: new MockLiveEventStateProvider(),
+      lookupProvider: new MockLiveEventLookupProvider(),
+      upcomingProvider: new MockUpcomingEventProvider()
+    },
+    openai: {
+      discoveryProvider: new OpenAiLiveEventDiscoveryProvider(openAiTransport),
+      stateProvider: new OpenAiLiveEventStateProvider(openAiTransport),
+      lookupProvider: new OpenAiLiveEventLookupProvider(openAiTransport),
+      upcomingProvider: new OpenAiUpcomingEventProvider(openAiTransport)
+    },
+    gemini: {
+      discoveryProvider: new GeminiLiveEventDiscoveryProvider(geminiTransport),
+      stateProvider: new GeminiLiveEventStateProvider(geminiTransport),
+      lookupProvider: new GeminiLiveEventLookupProvider(geminiTransport),
+      upcomingProvider: new GeminiUpcomingEventProvider(geminiTransport)
+    }
+  } as const;
+
+  const getActiveProviders = () =>
+    providerBundles[runtimeProviderState.getActiveMode()];
 
   const liveService = new LiveService(
     env,
     new EnvironmentAiAccessController(env.aiEnabled),
-    providers.discoveryProvider,
-    providers.stateProvider,
-    providers.lookupProvider,
-    providers.upcomingProvider
+    () => ({
+      activeMode: runtimeProviderState.getActiveMode(),
+      availableOptions: runtimeProviderState.getAvailableOptions()
+    }),
+    {
+      discover: (input) =>
+        getActiveProviders().discoveryProvider.discover(input)
+    },
+    {
+      refreshStates: (input) =>
+        getActiveProviders().stateProvider.refreshStates(input)
+    },
+    {
+      getContext: (matchId) =>
+        getActiveProviders().lookupProvider.getContext(matchId),
+      getState: (matchId) =>
+        getActiveProviders().lookupProvider.getState(matchId),
+      getLiveEvent: (matchId) =>
+        getActiveProviders().lookupProvider.getLiveEvent(matchId)
+    },
+    {
+      getUpcoming: (input) =>
+        getActiveProviders().upcomingProvider.getUpcoming(input),
+      getUpcomingByMatchId: (matchId) =>
+        getActiveProviders().upcomingProvider.getUpcomingByMatchId(matchId)
+    }
   );
 
   const handleKnownError = (
@@ -138,6 +181,19 @@ export const createApp = () => {
   });
 
   app.use("/api/v1/events", requireApiAccess(env));
+  app.use("/api/v1/runtime", requireApiAccess(env));
+
+  app.post("/api/v1/runtime/model", async (request, response) => {
+    const requestId = createRequestId();
+    try {
+      const nextMode = providerModeSchema.parse(request.body.model);
+      runtimeProviderState.setActiveMode(nextMode);
+      const config = configSchema.parse(await liveService.getConfig());
+      sendEnvelope(response, requestId, config);
+    } catch (error) {
+      handleKnownError(response, requestId, error);
+    }
+  });
 
   app.get("/api/v1/events/live/discover", async (request, response) => {
     const requestId = createRequestId();

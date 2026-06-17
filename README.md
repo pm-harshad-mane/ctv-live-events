@@ -59,7 +59,7 @@ To switch the backend from mock providers to OpenAI-backed providers:
 ```env
 USE_MOCK_DATA=false
 OPENAI_API_KEY=your-key
-OPENAI_MODEL=gpt-5-mini
+OPENAI_MODEL=gpt-5.4-mini
 ```
 
 For the current local Node/Vite MVP, put those values in a repo-root `.env` file. `.dev.vars` is reserved for the later Cloudflare runtime path.
@@ -84,7 +84,7 @@ OpenAI mode:
 
 ```env
 OPENAI_API_KEY=
-OPENAI_MODEL=gpt-5-mini
+OPENAI_MODEL=gpt-5.4-mini
 OPENAI_REQUEST_TIMEOUT_MS=45000
 ```
 
@@ -1158,7 +1158,7 @@ A GET discovery endpoint may remain as a simple convenience method, but the fron
 
 Use a compact state-only schema.
 
-{
+{are 
   "match_id": "basketball:nba:2026-06-16:bos:gsw",
   "match_status": "live",
   "period": {

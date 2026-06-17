@@ -233,6 +233,7 @@ describe("OpenAI providers", () => {
                 description:
                   "No verified possession or territorial control yet."
               },
+              active_players: [],
               what_is_happening: {
                 headline: "Scheduled for today",
                 summary: "No verified live action yet.",
@@ -394,6 +395,26 @@ describe("OpenAI providers", () => {
               participant_id: "bos",
               description: "Boston has the ball."
             },
+            active_players: [
+              {
+                player_id: "bos-lead-guard",
+                player_name: "Boston Lead Guard",
+                participant_id: "bos",
+                role: "Primary ball handler",
+                status: "On court",
+                impact_summary: "Driving the live offense.",
+                key_metrics: [
+                  {
+                    label: "Points",
+                    value: "28"
+                  },
+                  {
+                    label: "Assists",
+                    value: "8"
+                  }
+                ]
+              }
+            ],
             what_is_happening: {
               headline: "Late-game possession",
               summary: "Boston is working a decisive set.",

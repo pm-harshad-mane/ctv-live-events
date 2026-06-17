@@ -4,6 +4,7 @@ import type {
   LiveState,
   MatchContext,
   MatchIdentity,
+  ProviderMode,
   PublicConfig,
   UpcomingEvent
 } from "../../shared/schemas/live";
@@ -11,10 +12,9 @@ import {
   ApiError,
   discoverLiveEvents,
   fetchConfig,
-  fetchLiveMatchContext,
-  fetchLiveMatchState,
   fetchUpcomingEvents,
-  refreshLiveStates
+  refreshLiveStates,
+  switchActiveModel
 } from "../lib/api";
 
 type Filters = {
@@ -110,6 +110,10 @@ export const useLiveEvents = () => {
   const [liveLoading, setLiveLoading] = useState(true);
   const [upcomingLoading, setUpcomingLoading] = useState(true);
   const [hasLoadedLiveOnce, setHasLoadedLiveOnce] = useState(false);
+  const [hasLoadedUpcomingOnce, setHasLoadedUpcomingOnce] = useState(false);
+  const [periodicUpdatesEnabled, setPeriodicUpdatesEnabled] = useState(false);
+  const [liveFetchTrigger, setLiveFetchTrigger] = useState(0);
+  const [upcomingFetchTrigger, setUpcomingFetchTrigger] = useState(0);
   const [statusMessage, setStatusMessage] = useState(
     "Loading live sports intelligence..."
   );
@@ -127,6 +131,45 @@ export const useLiveEvents = () => {
   const detailControllerRef = useRef<AbortController | null>(null);
 
   const eventIdentities = useMemo(() => events.map(buildIdentity), [events]);
+  const manualFetchMode = config ? !config.use_mock_data : false;
+
+  const resetLoadedState = (nextConfig: PublicConfig) => {
+    liveControllerRef.current?.abort();
+    upcomingControllerRef.current?.abort();
+    detailControllerRef.current?.abort();
+    setEvents([]);
+    setUpcomingEvents([]);
+    setStaleMatchIds([]);
+    setLiveWarnings([]);
+    setUpcomingWarnings([]);
+    setSelectedLiveMatchId(null);
+    setSelectedUpcomingMatchId(null);
+    setSelectedLiveMatchDetail(null);
+    setSelectedUpcomingMatchDetail(null);
+    setDetailStatus("idle");
+    setDetailError(null);
+    setHasLoadedLiveOnce(false);
+    setHasLoadedUpcomingOnce(false);
+    setLiveFetchTrigger(0);
+    setUpcomingFetchTrigger(0);
+    setStateCountdown(nextConfig.state_refresh_after_seconds);
+    setDiscoveryCountdown(nextConfig.discovery_refresh_after_seconds);
+    setServiceDisabled(false);
+    setErrorMessage(null);
+    setLiveLoading(nextConfig.use_mock_data);
+    setUpcomingLoading(nextConfig.use_mock_data);
+    setPeriodicUpdatesEnabled(nextConfig.use_mock_data);
+    setStatusMessage(
+      nextConfig.use_mock_data
+        ? "Loading live sports intelligence..."
+        : "Choose filters and click Load live matches."
+    );
+    setUpcomingStatusMessage(
+      nextConfig.use_mock_data
+        ? "Loading upcoming matches..."
+        : "Choose filters and click Load upcoming matches."
+    );
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -139,6 +182,20 @@ export const useLiveEvents = () => {
         setConfig(nextConfig);
         setStateCountdown(nextConfig.state_refresh_after_seconds);
         setDiscoveryCountdown(nextConfig.discovery_refresh_after_seconds);
+        setPeriodicUpdatesEnabled(nextConfig.use_mock_data);
+        if (nextConfig.use_mock_data) {
+          setStatusMessage("Loading live sports intelligence...");
+          setUpcomingStatusMessage("Loading upcoming matches...");
+          setLiveLoading(true);
+          setUpcomingLoading(true);
+        } else {
+          setStatusMessage("Choose filters and click Load live matches.");
+          setUpcomingStatusMessage(
+            "Choose filters and click Load upcoming matches."
+          );
+          setLiveLoading(false);
+          setUpcomingLoading(false);
+        }
       } catch (error) {
         if ((error as Error).name === "AbortError") {
           return;
@@ -161,36 +218,25 @@ export const useLiveEvents = () => {
       }
       return;
     }
-
-    const controller = new AbortController();
-    detailControllerRef.current?.abort();
-    detailControllerRef.current = controller;
     setSelectedUpcomingMatchDetail(null);
-    setDetailStatus("loading");
     setDetailError(null);
+    const selectedEvent =
+      events.find((event) => event.match_id === selectedLiveMatchId) ?? null;
 
-    void Promise.all([
-      fetchLiveMatchContext(selectedLiveMatchId, controller.signal),
-      fetchLiveMatchState(selectedLiveMatchId, controller.signal)
-    ])
-      .then(([contextPayload, statePayload]) => {
-        setSelectedLiveMatchDetail({
-          matchId: selectedLiveMatchId,
-          context: contextPayload.context,
-          liveState: statePayload.live_state
-        });
-        setDetailStatus("ready");
-      })
-      .catch((error: unknown) => {
-        if ((error as Error).name === "AbortError") {
-          return;
-        }
-        setDetailError((error as Error).message);
-        setDetailStatus("error");
-      });
+    if (!selectedEvent || !selectedEvent.context) {
+      setSelectedLiveMatchDetail(null);
+      setDetailError("Selected live match is no longer available.");
+      setDetailStatus("error");
+      return;
+    }
 
-    return () => controller.abort();
-  }, [selectedLiveMatchId, selectedUpcomingMatchId]);
+    setSelectedLiveMatchDetail({
+      matchId: selectedLiveMatchId,
+      context: selectedEvent.context,
+      liveState: selectedEvent.live_state
+    });
+    setDetailStatus("ready");
+  }, [events, selectedLiveMatchId, selectedUpcomingMatchId]);
 
   useEffect(() => {
     if (!selectedUpcomingMatchId) {
@@ -220,7 +266,57 @@ export const useLiveEvents = () => {
   }, [selectedLiveMatchId, selectedUpcomingMatchId, upcomingEvents]);
 
   useEffect(() => {
-    if (serviceDisabled) {
+    if (!config || serviceDisabled) {
+      return;
+    }
+
+    if (config.use_mock_data) {
+      setLiveFetchTrigger((current) => current + 1);
+      return;
+    }
+
+    setEvents([]);
+    setStaleMatchIds([]);
+    setLiveWarnings([]);
+    setSelectedLiveMatchId(null);
+    setSelectedLiveMatchDetail(null);
+    setHasLoadedLiveOnce(false);
+    setStateCountdown(config.state_refresh_after_seconds);
+    setDiscoveryCountdown(config.discovery_refresh_after_seconds);
+    setLiveLoading(false);
+    setErrorMessage(null);
+    setStatusMessage("Choose filters and click Load live matches.");
+  }, [config, filters.region, filters.sport, reloadToken, serviceDisabled]);
+
+  useEffect(() => {
+    if (!config || serviceDisabled) {
+      return;
+    }
+
+    if (config.use_mock_data) {
+      setUpcomingFetchTrigger((current) => current + 1);
+      return;
+    }
+
+    setUpcomingEvents([]);
+    setUpcomingWarnings([]);
+    setSelectedUpcomingMatchId(null);
+    setSelectedUpcomingMatchDetail(null);
+    setHasLoadedUpcomingOnce(false);
+    setUpcomingLoading(false);
+    setErrorMessage(null);
+    setUpcomingStatusMessage("Choose filters and click Load upcoming matches.");
+  }, [
+    config,
+    filters.region,
+    filters.sport,
+    upcomingDays,
+    reloadToken,
+    serviceDisabled
+  ]);
+
+  useEffect(() => {
+    if (!config || serviceDisabled || liveFetchTrigger === 0) {
       return;
     }
 
@@ -247,6 +343,8 @@ export const useLiveEvents = () => {
         setLiveWarnings(discovery.warnings);
         setServiceDisabled(false);
         setHasLoadedLiveOnce(true);
+        setStateCountdown(config.state_refresh_after_seconds);
+        setDiscoveryCountdown(config.discovery_refresh_after_seconds);
         setStatusMessage(
           discovery.data.events.length > 0
             ? "Live events loaded."
@@ -276,10 +374,16 @@ export const useLiveEvents = () => {
     void loadLiveEvents();
 
     return () => controller.abort();
-  }, [filters.region, filters.sport, reloadToken, serviceDisabled]);
+  }, [
+    config,
+    filters.region,
+    filters.sport,
+    liveFetchTrigger,
+    serviceDisabled
+  ]);
 
   useEffect(() => {
-    if (serviceDisabled) {
+    if (!config || serviceDisabled || upcomingFetchTrigger === 0) {
       return;
     }
 
@@ -301,6 +405,7 @@ export const useLiveEvents = () => {
         );
         setUpcomingEvents(upcoming.data.events);
         setUpcomingWarnings(upcoming.warnings);
+        setHasLoadedUpcomingOnce(true);
         setUpcomingStatusMessage(
           upcoming.data.events.length > 0
             ? `Upcoming slate loaded for the next ${upcomingDays} days.`
@@ -331,15 +436,21 @@ export const useLiveEvents = () => {
 
     return () => controller.abort();
   }, [
+    config,
     filters.region,
     filters.sport,
     upcomingDays,
-    reloadToken,
+    upcomingFetchTrigger,
     serviceDisabled
   ]);
 
   useEffect(() => {
-    if (!config || serviceDisabled || !hasLoadedLiveOnce) {
+    if (
+      !config ||
+      serviceDisabled ||
+      !hasLoadedLiveOnce ||
+      !periodicUpdatesEnabled
+    ) {
       return;
     }
 
@@ -353,13 +464,14 @@ export const useLiveEvents = () => {
     }, 1000);
 
     return () => window.clearInterval(tick);
-  }, [config, hasLoadedLiveOnce, serviceDisabled]);
+  }, [config, hasLoadedLiveOnce, periodicUpdatesEnabled, serviceDisabled]);
 
   useEffect(() => {
     if (
       !config ||
       serviceDisabled ||
       !hasLoadedLiveOnce ||
+      !periodicUpdatesEnabled ||
       events.length === 0
     ) {
       return;
@@ -420,12 +532,18 @@ export const useLiveEvents = () => {
     filters.region,
     filters.sport,
     hasLoadedLiveOnce,
+    periodicUpdatesEnabled,
     serviceDisabled,
     stateCountdown
   ]);
 
   useEffect(() => {
-    if (!config || serviceDisabled || !hasLoadedLiveOnce) {
+    if (
+      !config ||
+      serviceDisabled ||
+      !hasLoadedLiveOnce ||
+      !periodicUpdatesEnabled
+    ) {
       return;
     }
 
@@ -476,18 +594,33 @@ export const useLiveEvents = () => {
     filters.region,
     filters.sport,
     hasLoadedLiveOnce,
+    periodicUpdatesEnabled,
     serviceDisabled
   ]);
 
-  const refreshStateNow = async () => {
+  const loadLiveNow = async () => {
     if (!config) {
+      return;
+    }
+    setLiveFetchTrigger((current) => current + 1);
+  };
+
+  const loadUpcomingNow = async () => {
+    if (!config) {
+      return;
+    }
+    setUpcomingFetchTrigger((current) => current + 1);
+  };
+
+  const refreshStateNow = async () => {
+    if (!config || !hasLoadedLiveOnce) {
       return;
     }
     setStateCountdown(0);
   };
 
   const rediscoverNow = async () => {
-    if (!config) {
+    if (!config || !hasLoadedLiveOnce) {
       return;
     }
     setDiscoveryCountdown(0);
@@ -496,6 +629,36 @@ export const useLiveEvents = () => {
   const retryAfterDisabled = async () => {
     setServiceDisabled(false);
     setReloadToken((current) => current + 1);
+  };
+
+  const changeActiveModel = async (mode: ProviderMode) => {
+    if (!config || config.active_model === mode) {
+      return;
+    }
+
+    const controller = new AbortController();
+    configControllerRef.current?.abort();
+    configControllerRef.current = controller;
+    setLiveLoading(true);
+    setUpcomingLoading(true);
+    setStatusMessage("Switching data source...");
+    setUpcomingStatusMessage("Switching data source...");
+    setErrorMessage(null);
+
+    try {
+      const nextConfig = await switchActiveModel(mode, controller.signal);
+      resetLoadedState(nextConfig);
+      setConfig(nextConfig);
+    } catch (error) {
+      if ((error as Error).name === "AbortError") {
+        return;
+      }
+      setErrorMessage((error as Error).message);
+      setStatusMessage("Unable to switch data source.");
+      setUpcomingStatusMessage("Unable to switch data source.");
+      setLiveLoading(false);
+      setUpcomingLoading(false);
+    }
   };
 
   const selectLiveMatch = (matchId: string) => {
@@ -534,6 +697,8 @@ export const useLiveEvents = () => {
     detailStatus,
     detailError,
     upcomingDays,
+    manualFetchMode,
+    periodicUpdatesEnabled,
     upcomingStatusMessage,
     errorMessage,
     filters,
@@ -542,13 +707,18 @@ export const useLiveEvents = () => {
     stateCountdown,
     discoveryCountdown,
     hasLoadedLiveOnce,
+    hasLoadedUpcomingOnce,
     setFilters,
     setUpcomingDays,
+    setPeriodicUpdatesEnabled,
     selectLiveMatch,
     selectUpcomingMatch,
     clearDetailSelection,
+    loadLiveNow,
+    loadUpcomingNow,
     refreshStateNow,
     rediscoverNow,
-    retryAfterDisabled
+    retryAfterDisabled,
+    changeActiveModel
   };
 };

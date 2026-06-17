@@ -3,6 +3,9 @@ import { resolve } from "node:path";
 
 let envFileLoaded = false;
 
+const supportedProviderModes = ["mock", "openai", "gemini"] as const;
+type SupportedProviderMode = (typeof supportedProviderModes)[number];
+
 const loadLocalEnvFile = (): void => {
   if (envFileLoaded) {
     return;
@@ -68,6 +71,18 @@ const listValue = (value: string | undefined): string[] =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const providerModeListValue = (
+  value: string | undefined,
+  fallback: SupportedProviderMode[]
+): SupportedProviderMode[] => {
+  const parsed = listValue(value).filter(
+    (item): item is SupportedProviderMode =>
+      supportedProviderModes.includes(item as SupportedProviderMode)
+  );
+
+  return parsed.length > 0 ? parsed : fallback;
+};
+
 export type AppEnv = {
   port: number;
   publicApiAccess: boolean;
@@ -75,7 +90,15 @@ export type AppEnv = {
   externalApiKeys: string[];
   openAiApiKey: string | null;
   openAiModel: string;
+  openAiDisplayLabel: string;
+  geminiApiKey: string | null;
+  geminiModel: string;
+  geminiDisplayLabel: string;
+  mockDisplayLabel: string;
+  enabledProviderModes: SupportedProviderMode[];
+  defaultProviderMode: SupportedProviderMode;
   openAiRequestTimeoutMs: number;
+  geminiRequestTimeoutMs: number;
   defaultRegion: string;
   defaultUpcomingDays: number;
   maxUpcomingDays: number;
@@ -96,6 +119,25 @@ export const getEnv = (): AppEnv => {
   const useMockData = booleanValue(process.env.USE_MOCK_DATA, true);
   const isLocalDevelopment = process.env.NODE_ENV !== "production";
   const publicApiAccessDefault = useMockData && isLocalDevelopment;
+  const providerModeFallback = useMockData
+    ? (["mock", "openai"] as SupportedProviderMode[])
+    : (["openai", "mock"] as SupportedProviderMode[]);
+  const enabledProviderModes = providerModeListValue(
+    process.env.ENABLED_PROVIDER_MODES,
+    providerModeFallback
+  );
+  const defaultProviderModeCandidate =
+    process.env.DEFAULT_PROVIDER_MODE?.trim();
+  const defaultProviderMode =
+    defaultProviderModeCandidate &&
+    supportedProviderModes.includes(
+      defaultProviderModeCandidate as SupportedProviderMode
+    ) &&
+    enabledProviderModes.includes(
+      defaultProviderModeCandidate as SupportedProviderMode
+    )
+      ? (defaultProviderModeCandidate as SupportedProviderMode)
+      : enabledProviderModes[0];
 
   return {
     port: numberValue(process.env.PORT, 8787),
@@ -107,9 +149,21 @@ export const getEnv = (): AppEnv => {
     externalApiKeys: listValue(process.env.EXTERNAL_API_KEYS),
     openAiApiKey: process.env.OPENAI_API_KEY?.trim() || null,
     openAiModel: process.env.OPENAI_MODEL?.trim() || "gpt-5-mini",
+    openAiDisplayLabel:
+      process.env.OPENAI_DISPLAY_LABEL?.trim() || "ChatGPT 4.5 mini",
+    geminiApiKey: process.env.GEMINI_API_KEY?.trim() || null,
+    geminiModel: process.env.GEMINI_MODEL?.trim() || "gemini-3.5-flash",
+    geminiDisplayLabel: process.env.GEMINI_DISPLAY_LABEL?.trim() || "Gemini 3",
+    mockDisplayLabel: process.env.MOCK_DISPLAY_LABEL?.trim() || "MockData",
+    enabledProviderModes,
+    defaultProviderMode,
     openAiRequestTimeoutMs: numberValue(
       process.env.OPENAI_REQUEST_TIMEOUT_MS,
       45000
+    ),
+    geminiRequestTimeoutMs: numberValue(
+      process.env.GEMINI_REQUEST_TIMEOUT_MS,
+      90000
     ),
     defaultRegion: process.env.DEFAULT_REGION ?? "north-america",
     defaultUpcomingDays: numberValue(process.env.DEFAULT_UPCOMING_DAYS, 7),

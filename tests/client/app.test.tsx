@@ -31,7 +31,35 @@ describe("App", () => {
             discovery_refresh_after_seconds: 300,
             state_refresh_after_seconds: 60,
             max_live_events: 50,
-            public_api_access: true
+            public_api_access: true,
+            use_mock_data: true,
+            active_model: "mock",
+            available_models: [
+              { id: "mock", label: "MockData" },
+              { id: "openai", label: "ChatGPT 4.5 mini" },
+              { id: "gemini", label: "Gemini 3" }
+            ]
+          },
+          warnings: []
+        });
+      }
+
+      if (url.endsWith("/api/v1/runtime/model")) {
+        return jsonResponse({
+          data: {
+            api_version: "v1",
+            ai_service_available: true,
+            discovery_refresh_after_seconds: 300,
+            state_refresh_after_seconds: 60,
+            max_live_events: 50,
+            public_api_access: true,
+            use_mock_data: false,
+            active_model: "openai",
+            available_models: [
+              { id: "mock", label: "MockData" },
+              { id: "openai", label: "ChatGPT 4.5 mini" },
+              { id: "gemini", label: "Gemini 3" }
+            ]
           },
           warnings: []
         });
@@ -136,6 +164,32 @@ describe("App", () => {
                     participant_id: "bos",
                     description: "Boston has the ball in the front court."
                   },
+                  active_players: [
+                    {
+                      player_id: "bos-lead-guard",
+                      player_name: "Boston Lead Guard",
+                      participant_id: "bos",
+                      role: "Primary ball handler",
+                      status: "On court",
+                      impact_summary: "Running the offense late.",
+                      key_metrics: [
+                        { label: "Points", value: "26" },
+                        { label: "Assists", value: "8" }
+                      ]
+                    },
+                    {
+                      player_id: "gsw-wing-scorer",
+                      player_name: "Golden State Wing Scorer",
+                      participant_id: "gsw",
+                      role: "Primary scorer",
+                      status: "On court",
+                      impact_summary: "Keeping the margin tight.",
+                      key_metrics: [
+                        { label: "Points", value: "24" },
+                        { label: "3PT", value: "4" }
+                      ]
+                    }
+                  ],
                   what_is_happening: {
                     headline: "Demo headline",
                     summary: "Demo state summary",
@@ -353,6 +407,32 @@ describe("App", () => {
                 participant_id: "bos",
                 description: "Boston is working a late possession."
               },
+              active_players: [
+                {
+                  player_id: "bos-lead-guard",
+                  player_name: "Boston Lead Guard",
+                  participant_id: "bos",
+                  role: "Primary ball handler",
+                  status: "On court",
+                  impact_summary: "Running the offense late.",
+                  key_metrics: [
+                    { label: "Points", value: "29" },
+                    { label: "Assists", value: "9" }
+                  ]
+                },
+                {
+                  player_id: "gsw-wing-scorer",
+                  player_name: "Golden State Wing Scorer",
+                  participant_id: "gsw",
+                  role: "Primary scorer",
+                  status: "On court",
+                  impact_summary: "Attacking the switch coverage.",
+                  key_metrics: [
+                    { label: "Points", value: "27" },
+                    { label: "3PT", value: "5" }
+                  ]
+                }
+              ],
               what_is_happening: {
                 headline: "Detail endpoint headline",
                 summary: "Detail endpoint state summary",
@@ -783,7 +863,177 @@ describe("App", () => {
     ]);
   });
 
-  it("loads dedicated live detail endpoints for the selected live match", async () => {
+  it("shows the enabled data sources and lets the user switch models", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", {
+          name: "Boston Celtics vs Golden State Warriors"
+        })
+      ).toBeInTheDocument();
+    });
+
+    const sourceSelect = await screen.findByDisplayValue("MockData");
+    const optionLabels = within(sourceSelect)
+      .getAllByRole("option")
+      .map((option) => option.textContent);
+
+    expect(optionLabels).toEqual(["MockData", "ChatGPT 4.5 mini", "Gemini 3"]);
+
+    await user.selectOptions(sourceSelect, "openai");
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/api/v1/runtime/model",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ model: "openai" })
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Load live matches" })
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("waits for an explicit click before fetching in non-mock mode", async () => {
+    const user = userEvent.setup();
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.endsWith("/api/v1/config")) {
+        return jsonResponse({
+          data: {
+            api_version: "v1",
+            ai_service_available: true,
+            discovery_refresh_after_seconds: 300,
+            state_refresh_after_seconds: 60,
+            max_live_events: 50,
+            public_api_access: true,
+            use_mock_data: false,
+            active_model: "openai",
+            available_models: [
+              { id: "mock", label: "MockData" },
+              { id: "openai", label: "ChatGPT 4.5 mini" },
+              { id: "gemini", label: "Gemini 3" }
+            ]
+          },
+          warnings: []
+        });
+      }
+
+      if (url.endsWith("/api/v1/runtime/model")) {
+        return jsonResponse({
+          data: {
+            api_version: "v1",
+            ai_service_available: true,
+            discovery_refresh_after_seconds: 300,
+            state_refresh_after_seconds: 60,
+            max_live_events: 50,
+            public_api_access: true,
+            use_mock_data: false,
+            active_model: "openai",
+            available_models: [
+              { id: "mock", label: "MockData" },
+              { id: "openai", label: "ChatGPT 4.5 mini" },
+              { id: "gemini", label: "Gemini 3" }
+            ]
+          },
+          warnings: []
+        });
+      }
+
+      if (url.endsWith("/api/v1/events/live/discover")) {
+        return jsonResponse({
+          data: {
+            request: {
+              region: "north-america",
+              sport: "soccer",
+              include_context: true
+            },
+            meta: {
+              count: 0,
+              region: "north-america",
+              sport: "soccer",
+              state_refresh_after_seconds: 60,
+              discovery_refresh_after_seconds: 300,
+              ai_service_available: true
+            },
+            events: []
+          },
+          warnings: []
+        });
+      }
+
+      if (url.includes("/api/v1/events/upcoming?")) {
+        return jsonResponse({
+          data: {
+            meta: {
+              count: 0,
+              region: "north-america",
+              sport: "soccer",
+              days: 7,
+              ai_service_available: true
+            },
+            events: []
+          },
+          warnings: []
+        });
+      }
+
+      return jsonResponse({});
+    }) as typeof fetch;
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Choose filters and click Load live matches.")
+      ).toBeInTheDocument();
+    });
+
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/v1/events/live/discover"),
+      expect.anything()
+    );
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/v1/events/upcoming?"),
+      expect.anything()
+    );
+
+    await user.click(screen.getByRole("button", { name: "Load live matches" }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/events/live/discover"),
+        expect.anything()
+      );
+    });
+
+    await user.click(screen.getByRole("link", { name: "Upcoming" }));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Upcoming matches." })
+      ).toBeInTheDocument();
+    });
+    await user.click(
+      screen.getByRole("button", { name: "Load upcoming matches" })
+    );
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/events/upcoming?"),
+        expect.anything()
+      );
+    });
+  });
+
+  it("uses prefetched live data for match details without another request", async () => {
     const user = userEvent.setup();
     render(<App />);
 
@@ -794,16 +1044,22 @@ describe("App", () => {
 
     expect(liveSection).not.toBeNull();
 
+    await waitFor(() => {
+      expect(
+        within(liveSection as HTMLElement).getByRole("heading", {
+          name: "Boston Celtics vs Golden State Warriors"
+        })
+      ).toBeInTheDocument();
+    });
+
     await user.click(
       within(liveSection as HTMLElement).getByRole("button", {
-        name: "Details"
+        name: "More Details"
       })
     );
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Detail endpoint summary headline")
-      ).toBeInTheDocument();
+      expect(screen.getByText("Demo summary")).toBeInTheDocument();
     });
 
     const detailDialog = screen.getByRole("dialog");
@@ -814,23 +1070,27 @@ describe("App", () => {
       )
     ).toBeInTheDocument();
     expect(
-      within(detailDialog).getByText("Time left: 1m 48s")
+      within(detailDialog).getByText(/Time left: 2m 1[34]s/)
     ).toBeInTheDocument();
     expect(
-      within(detailDialog).getByText("Boston is working a late possession.")
+      within(detailDialog).getByText("Demo state summary")
     ).toBeInTheDocument();
+    expect(
+      within(detailDialog).getByText(/Boston Lead Guard/)
+    ).toBeInTheDocument();
+    expect(within(detailDialog).getByText(/Points 26/)).toBeInTheDocument();
     expect(
       within(detailDialog).getByLabelText(
         /Comeback probability\. The chance that the currently trailing side still manages to win\./
       )
     ).toBeInTheDocument();
     expect(
-      within(detailDialog).getByText("Boston Celtics: 58%")
+      within(detailDialog).getByText("Boston Celtics: 56%")
     ).toBeInTheDocument();
     expect(
-      within(detailDialog).getByText("Boston Celtics: +6 pts")
+      within(detailDialog).getByText("Boston Celtics: +5 pts")
     ).toBeInTheDocument();
-    expect(within(detailDialog).getByText("evt_2")).toBeInTheDocument();
+    expect(within(detailDialog).getByText("evt_1")).toBeInTheDocument();
     expect(within(detailDialog).getByText("Quarter")).toBeInTheDocument();
     expect(within(detailDialog).getByText("4")).toBeInTheDocument();
     expect(
@@ -842,13 +1102,13 @@ describe("App", () => {
       within(detailDialog).queryByText(/"quarter": 4/)
     ).not.toBeInTheDocument();
 
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(global.fetch).not.toHaveBeenCalledWith(
       expect.stringContaining(
         "/api/v1/events/live/basketball%3Anba%3Ademo/context"
       ),
       expect.anything()
     );
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(global.fetch).not.toHaveBeenCalledWith(
       expect.stringContaining(
         "/api/v1/events/live/basketball%3Anba%3Ademo/state"
       ),
@@ -877,7 +1137,7 @@ describe("App", () => {
 
     await user.click(
       within(upcomingCard as HTMLElement).getByRole("button", {
-        name: "Details"
+        name: "More Details"
       })
     );
 
@@ -912,5 +1172,152 @@ describe("App", () => {
       ),
       expect.anything()
     );
+  });
+
+  it("shows yet-to-start status and time left for matches scheduled later today", async () => {
+    const user = userEvent.setup();
+    const now = new Date();
+    const sameDayFutureStart = new Date(now.getTime() + 60 * 60 * 1000);
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.endsWith("/api/v1/config")) {
+        return jsonResponse({
+          data: {
+            api_version: "v1",
+            ai_service_available: true,
+            discovery_refresh_after_seconds: 300,
+            state_refresh_after_seconds: 60,
+            max_live_events: 50,
+            public_api_access: true,
+            use_mock_data: true,
+            active_model: "mock",
+            available_models: [{ id: "mock", label: "MockData" }]
+          },
+          warnings: []
+        });
+      }
+
+      if (url.endsWith("/api/v1/events/live/discover")) {
+        return jsonResponse({
+          data: {
+            request: {
+              region: "north-america",
+              sport: "soccer",
+              include_context: true
+            },
+            meta: {
+              count: 0,
+              region: "north-america",
+              sport: "soccer",
+              state_refresh_after_seconds: 60,
+              discovery_refresh_after_seconds: 300,
+              ai_service_available: true
+            },
+            events: []
+          },
+          warnings: []
+        });
+      }
+
+      if (url.includes("/api/v1/events/upcoming?")) {
+        return jsonResponse({
+          data: {
+            meta: {
+              count: 1,
+              region: "north-america",
+              sport: "soccer",
+              days: 7,
+              ai_service_available: true
+            },
+            events: [
+              {
+                match_id: "soccer:friendly:today-demo",
+                context: {
+                  match: {
+                    match_id: "soccer:friendly:today-demo",
+                    match_name: "LAFC vs Seattle Sounders",
+                    sport: "soccer",
+                    tournament_name: "MLS",
+                    tournament_stage: "Regular Season",
+                    scheduled_start_time: sameDayFutureStart.toISOString(),
+                    venue: {
+                      stadium: "BMO Stadium",
+                      city: "Los Angeles",
+                      state: "California",
+                      country: "United States"
+                    }
+                  },
+                  participants: [
+                    {
+                      participant_id: "lafc",
+                      name: "LAFC",
+                      short_name: "LAFC",
+                      role: "home",
+                      ranking: "1",
+                      recent_form: ["W", "W", "D"]
+                    },
+                    {
+                      participant_id: "sea",
+                      name: "Seattle Sounders",
+                      short_name: "SEA",
+                      role: "away",
+                      ranking: "4",
+                      recent_form: ["W", "L", "W"]
+                    }
+                  ],
+                  pre_match_intelligence: {
+                    headline: "Same-day rivalry match",
+                    summary: "This match is scheduled later today.",
+                    expected_competitiveness: 82,
+                    key_matchup: "Transition speed against possession control"
+                  },
+                  context_version: 1,
+                  context_fingerprint: "ctx_today_demo",
+                  context_generated_at: "2026-06-16T17:30:00.000Z"
+                },
+                upcoming_intelligence: {
+                  headline: "Later today in Los Angeles",
+                  summary: "A same-day start should be called out clearly.",
+                  projected_competitiveness: 82,
+                  watch_reasons: ["High-table meeting"],
+                  win_probabilities: [
+                    { participant_id: "lafc", probability: 0.55 },
+                    { participant_id: "sea", probability: 0.45 }
+                  ]
+                },
+                freshness: {
+                  generated_at: now.toISOString(),
+                  age_seconds: 0
+                }
+              }
+            ]
+          },
+          warnings: []
+        });
+      }
+
+      return jsonResponse({}, 404);
+    }) as typeof fetch;
+
+    render(<App />);
+    await user.click(screen.getByRole("link", { name: "Upcoming" }));
+
+    const upcomingCard = await screen.findByRole("heading", {
+      name: "LAFC vs Seattle Sounders"
+    });
+    const article = upcomingCard.closest("article");
+
+    expect(article).not.toBeNull();
+    expect(
+      within(article as HTMLElement).getByText("Yet to start")
+    ).toBeInTheDocument();
+    expect(
+      within(article as HTMLElement).getByText("Time left")
+    ).toBeInTheDocument();
+    expect(
+      within(article as HTMLElement).getByText(/Yet to start today at/i)
+    ).toBeInTheDocument();
   });
 });

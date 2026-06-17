@@ -1,5 +1,9 @@
 import type { UpcomingEvent } from "../../shared/schemas/live";
-import { formatVenueLocation } from "../lib/matchPresentation";
+import { useActiveCountdown } from "../hooks/useActiveCountdown";
+import {
+  formatVenueLocation,
+  getUpcomingStartDetails
+} from "../lib/matchPresentation";
 
 const formatProbability = (value: number): string =>
   `${Math.round(value * 100)}%`;
@@ -16,6 +20,10 @@ export const UpcomingCard = ({
   onSelect
 }: UpcomingCardProps) => {
   const participants = event.context.participants;
+  const startDetails = getUpcomingStartDetails(
+    event.context.match.scheduled_start_time
+  );
+  const timeUntilStart = useActiveCountdown(startDetails.remainingSeconds);
   const winProbabilities = event.upcoming_intelligence.win_probabilities
     .map((prediction) => ({
       ...prediction,
@@ -33,9 +41,7 @@ export const UpcomingCard = ({
     >
       <div className="event-card__eyebrow">
         <span>{event.context.match.tournament_name}</span>
-        <span>
-          {new Date(event.context.match.scheduled_start_time).toLocaleString()}
-        </span>
+        <span>{startDetails.statusLabel}</span>
       </div>
       <h3>{event.context.match.match_name}</h3>
       <div className="event-card__probability-band">
@@ -57,17 +63,31 @@ export const UpcomingCard = ({
           </strong>
         </div>
         <div className="event-card__metric">
-          <span>Start time</span>
+          <span>
+            {startDetails.isYetToStartToday ? "Time left" : "Start time"}
+          </span>
           <strong>
-            {new Date(
+            {startDetails.isYetToStartToday
+              ? timeUntilStart
+              : new Date(
+                  event.context.match.scheduled_start_time
+                ).toLocaleTimeString([], {
+                  hour: "numeric",
+                  minute: "2-digit"
+                })}
+          </strong>
+        </div>
+      </div>
+      <p className="event-card__summary">
+        {startDetails.isYetToStartToday
+          ? `Yet to start today at ${new Date(
               event.context.match.scheduled_start_time
             ).toLocaleTimeString([], {
               hour: "numeric",
               minute: "2-digit"
-            })}
-          </strong>
-        </div>
-      </div>
+            })}.`
+          : `Starts at ${startDetails.startDisplay}.`}
+      </p>
       <p className="event-card__upcoming-headline">
         {event.upcoming_intelligence.headline}
       </p>
@@ -87,7 +107,7 @@ export const UpcomingCard = ({
         className="event-card__action"
         onClick={() => onSelect(event.match_id)}
       >
-        {isSelected ? "Viewing details" : "Details"}
+        {isSelected ? "Viewing details" : "More Details"}
       </button>
     </article>
   );

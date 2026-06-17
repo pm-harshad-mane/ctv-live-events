@@ -5,7 +5,10 @@ import type {
 } from "../../shared/schemas/live";
 import { type ReactNode, useEffect } from "react";
 import { useActiveCountdown } from "../hooks/useActiveCountdown";
-import { formatVenueLocation } from "../lib/matchPresentation";
+import {
+  formatVenueLocation,
+  getUpcomingStartDetails
+} from "../lib/matchPresentation";
 
 const formatProbability = (value: number): string =>
   `${Math.round(value * 100)}%`;
@@ -57,6 +60,15 @@ const ATTRIBUTE_HELP: Record<string, string> = {
     "The current margin between the two sides based on the live score.",
   "Current control":
     "Which side has possession, territorial control, or the clearest tactical initiative right now.",
+  "Active players":
+    "The players most directly shaping the live state right now for this sport and moment.",
+  Role: "The player's current functional job in the live phase, such as batter, bowler, server, or scorer.",
+  "Player status":
+    "What this player is actively doing right now in the match flow.",
+  "Impact summary":
+    "A short explanation of why this player matters to the current live state.",
+  "Key metrics":
+    "A compact set of live metrics that explain the player's current influence.",
   Venue: "The stadium or arena location where the match is being played.",
   "Key matchup":
     "The most important tactical or talent battle expected to shape this match.",
@@ -288,6 +300,12 @@ export const DetailPanel = ({
 }: DetailPanelProps) => {
   const activeTimeLeft = useActiveCountdown(
     liveMatchDetail?.liveState.clock.remaining_seconds ?? 0
+  );
+  const upcomingStartDetails = upcomingEvent
+    ? getUpcomingStartDetails(upcomingEvent.context.match.scheduled_start_time)
+    : null;
+  const upcomingTimeLeft = useActiveCountdown(
+    upcomingStartDetails?.remainingSeconds ?? 0
   );
 
   useEffect(() => {
@@ -533,6 +551,49 @@ export const DetailPanel = ({
                     .join(" vs ")}
                 </DetailField>
               </div>
+            </section>
+
+            <section className="detail-card">
+              <h3>Active players</h3>
+              <div className="detail-stat-list">
+                <DetailField label="Active players">
+                  {liveMatchDetail.liveState.active_players.length}
+                </DetailField>
+              </div>
+              <ul className="event-card__points">
+                {liveMatchDetail.liveState.active_players.map((player) => (
+                  <li key={player.player_id}>
+                    <strong>{player.player_name}</strong> (
+                    {participantName(player.participant_id)}){" · "}
+                    <TooltipLabel
+                      label="Role"
+                      description={getAttributeHelp("Role")}
+                    />
+                    : {player.role}
+                    {" · "}
+                    <TooltipLabel
+                      label="Player status"
+                      description={getAttributeHelp("Player status")}
+                    />
+                    : {player.status}
+                    {" · "}
+                    <TooltipLabel
+                      label="Impact summary"
+                      description={getAttributeHelp("Impact summary")}
+                    />
+                    : {player.impact_summary}
+                    {" · "}
+                    <TooltipLabel
+                      label="Key metrics"
+                      description={getAttributeHelp("Key metrics")}
+                    />
+                    :{" "}
+                    {player.key_metrics
+                      .map((metric) => `${metric.label} ${metric.value}`)
+                      .join(", ")}
+                  </li>
+                ))}
+              </ul>
             </section>
 
             <section className="detail-card">
@@ -802,14 +863,11 @@ export const DetailPanel = ({
               </p>
             </div>
             <div className="detail-hero__timing">
-              <strong>
-                {upcomingEvent
-                  ? new Date(
-                      upcomingEvent.context.match.scheduled_start_time
-                    ).toLocaleString()
-                  : ""}
-              </strong>
-              <span>Upcoming</span>
+              <strong>{upcomingStartDetails?.startDisplay ?? ""}</strong>
+              <span>{upcomingStartDetails?.statusLabel ?? "Upcoming"}</span>
+              {upcomingStartDetails?.isYetToStartToday ? (
+                <span>Time left: {upcomingTimeLeft}</span>
+              ) : null}
             </div>
           </div>
         </div>
@@ -842,6 +900,11 @@ export const DetailPanel = ({
                   .map((item) => item.name)
                   .join(" vs ")}
               </DetailField>
+              {upcomingStartDetails?.isYetToStartToday ? (
+                <DetailField label="Status">
+                  Yet to start today. Time left: {upcomingTimeLeft}
+                </DetailField>
+              ) : null}
             </div>
           </section>
 

@@ -28,3 +28,31 @@ export const formatRemainingSeconds = (remainingSeconds: number): string => {
 
   return `${seconds}s`;
 };
+
+export const getUpcomingStartDetails = (
+  scheduledStartTime: string,
+  now = new Date()
+): {
+  startDisplay: string;
+  isYetToStartToday: boolean;
+  remainingSeconds: number;
+  statusLabel: string;
+} => {
+  const startDate = new Date(scheduledStartTime);
+  const remainingSeconds = Math.max(
+    0,
+    Math.floor((startDate.getTime() - now.getTime()) / 1000)
+  );
+  const isSameLocalDay =
+    startDate.getFullYear() === now.getFullYear() &&
+    startDate.getMonth() === now.getMonth() &&
+    startDate.getDate() === now.getDate();
+  const isYetToStartToday = isSameLocalDay && remainingSeconds > 0;
+
+  return {
+    startDisplay: startDate.toLocaleString(),
+    isYetToStartToday,
+    remainingSeconds,
+    statusLabel: isYetToStartToday ? "Yet to start" : "Upcoming"
+  };
+};

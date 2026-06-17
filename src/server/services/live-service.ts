@@ -10,6 +10,8 @@ import type {
   DiscoverRequest,
   MatchContext,
   MatchIdentity,
+  ProviderMode,
+  ProviderOption,
   PublicConfig,
   UpcomingEvent,
   UpcomingQuery
@@ -25,6 +27,10 @@ export class LiveService {
   constructor(
     private readonly env: AppEnv,
     private readonly aiAccessController: AiAccessController,
+    private readonly getRuntimeProviderConfig: () => {
+      activeMode: ProviderMode;
+      availableOptions: ProviderOption[];
+    },
     private readonly discoveryProvider: LiveEventDiscoveryProvider,
     private readonly stateProvider: LiveEventStateProvider,
     private readonly lookupProvider: LiveEventLookupProvider,
@@ -32,13 +38,17 @@ export class LiveService {
   ) {}
 
   async getConfig(): Promise<PublicConfig> {
+    const runtimeProviderConfig = this.getRuntimeProviderConfig();
     return {
       api_version: "v1",
       ai_service_available: await this.aiAccessController.isAiEnabled(),
       discovery_refresh_after_seconds: this.env.liveDiscoveryRefreshSeconds,
       state_refresh_after_seconds: this.env.liveStateRefreshSeconds,
       max_live_events: this.env.maxLiveEvents,
-      public_api_access: this.env.publicApiAccess
+      public_api_access: this.env.publicApiAccess,
+      use_mock_data: runtimeProviderConfig.activeMode === "mock",
+      active_model: runtimeProviderConfig.activeMode,
+      available_models: runtimeProviderConfig.availableOptions
     };
   }
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { ProviderMode } from "../shared/schemas/live";
 import { DetailPanel } from "./components/DetailPanel";
 import { EventCard } from "./components/EventCard";
 import { UpcomingCard } from "./components/UpcomingCard";
@@ -25,6 +26,8 @@ export const App = () => {
     detailStatus,
     detailError,
     upcomingDays,
+    manualFetchMode,
+    periodicUpdatesEnabled,
     upcomingStatusMessage,
     errorMessage,
     filters,
@@ -33,11 +36,17 @@ export const App = () => {
     stateCountdown,
     discoveryCountdown,
     hasLoadedLiveOnce,
+    hasLoadedUpcomingOnce,
+    config,
     setFilters,
     setUpcomingDays,
+    setPeriodicUpdatesEnabled,
     selectLiveMatch,
     selectUpcomingMatch,
     clearDetailSelection,
+    changeActiveModel,
+    loadLiveNow,
+    loadUpcomingNow,
     refreshStateNow,
     rediscoverNow,
     retryAfterDisabled
@@ -48,8 +57,7 @@ export const App = () => {
 
   const showLiveLoadingState =
     events.length === 0 &&
-    (!hasLoadedLiveOnce ||
-      liveLoading ||
+    (liveLoading ||
       statusMessage.startsWith("Loading live sports intelligence"));
   const showUpcomingLoadingState =
     upcomingEvents.length === 0 &&
@@ -101,24 +109,45 @@ export const App = () => {
         </div>
       </section>
 
-      <nav className="page-nav" aria-label="Sections">
-        <a
-          href="#/live"
-          className={`page-nav__link ${
-            activePage === "live" ? "page-nav__link--active" : ""
-          }`}
-        >
-          Live
-        </a>
-        <a
-          href="#/upcoming"
-          className={`page-nav__link ${
-            activePage === "upcoming" ? "page-nav__link--active" : ""
-          }`}
-        >
-          Upcoming
-        </a>
-      </nav>
+      <div className="page-controls">
+        <nav className="page-nav" aria-label="Sections">
+          <a
+            href="#/live"
+            className={`page-nav__link ${
+              activePage === "live" ? "page-nav__link--active" : ""
+            }`}
+          >
+            Live
+          </a>
+          <a
+            href="#/upcoming"
+            className={`page-nav__link ${
+              activePage === "upcoming" ? "page-nav__link--active" : ""
+            }`}
+          >
+            Upcoming
+          </a>
+        </nav>
+
+        {config ? (
+          <label className="page-controls__model-field">
+            <span>Data Source</span>
+            <select
+              value={config.active_model}
+              onChange={(event) =>
+                void changeActiveModel(event.target.value as ProviderMode)
+              }
+              disabled={liveLoading || upcomingLoading}
+            >
+              {config.available_models.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </div>
 
       <section className="toolbar">
         <label className="toolbar__field">
@@ -181,32 +210,64 @@ export const App = () => {
           <div className="toolbar__actions">
             <button
               type="button"
+              onClick={() => void loadLiveNow()}
+              disabled={serviceDisabled || liveLoading}
+            >
+              {hasLoadedLiveOnce ? "Reload live matches" : "Load live matches"}
+            </button>
+            <button
+              type="button"
               onClick={() => void refreshStateNow()}
-              disabled={serviceDisabled}
+              disabled={serviceDisabled || !hasLoadedLiveOnce}
             >
               Refresh live state
             </button>
             <button
               type="button"
               onClick={() => void rediscoverNow()}
-              disabled={serviceDisabled}
+              disabled={serviceDisabled || !hasLoadedLiveOnce}
             >
               Find new live matches
             </button>
+            <label className="toolbar__toggle">
+              <input
+                type="checkbox"
+                checked={periodicUpdatesEnabled}
+                onChange={(event) =>
+                  setPeriodicUpdatesEnabled(event.target.checked)
+                }
+                disabled={serviceDisabled || !hasLoadedLiveOnce}
+              />
+              <span>Periodic live updates</span>
+            </label>
           </div>
-        ) : null}
+        ) : (
+          <div className="toolbar__actions">
+            <button
+              type="button"
+              onClick={() => void loadUpcomingNow()}
+              disabled={serviceDisabled || upcomingLoading}
+            >
+              {hasLoadedUpcomingOnce
+                ? "Reload upcoming matches"
+                : "Load upcoming matches"}
+            </button>
+          </div>
+        )}
       </section>
 
       {activePage === "live" ? (
         <section className="status-panel">
           <p>{statusMessage}</p>
-          {hasLoadedLiveOnce ? (
+          {hasLoadedLiveOnce && periodicUpdatesEnabled ? (
             <>
               <p>Next state refresh in {stateCountdown}s</p>
               <p>
                 Searching for newly started matches every {discoveryCountdown}s
               </p>
             </>
+          ) : hasLoadedLiveOnce ? (
+            <p>Periodic live updates are paused.</p>
           ) : null}
           {errorMessage ? (
             <p className="status-panel__error">{errorMessage}</p>
@@ -255,6 +316,11 @@ export const App = () => {
               Loading live {filters.sport === "all" ? "events" : filters.sport}
               ...
             </div>
+          ) : manualFetchMode && !hasLoadedLiveOnce ? (
+            <div className="empty-state">
+              Click "Load live matches" to fetch live results for the selected
+              filters.
+            </div>
           ) : events.length > 0 ? (
             <section className="event-grid">
               {events.map((event) => (
@@ -288,6 +354,11 @@ export const App = () => {
               Loading upcoming{" "}
               {filters.sport === "all" ? "matches" : filters.sport}
               ...
+            </div>
+          ) : manualFetchMode && !hasLoadedUpcomingOnce ? (
+            <div className="empty-state">
+              Click "Load upcoming matches" to fetch the next slate for the
+              selected filters.
             </div>
           ) : upcomingEvents.length > 0 ? (
             <section className="event-grid">

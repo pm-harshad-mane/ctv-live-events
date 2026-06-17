@@ -57,12 +57,14 @@ select {
 .hero__meta {
   display: grid;
   gap: 18px;
+  justify-items: end;
 }
 
 .hero__stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  width: 100%;
 }
 
 .hero__stats div {
@@ -85,10 +87,18 @@ select {
   font-size: 0.92rem;
 }
 
+.page-controls {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
 .page-nav {
   display: inline-flex;
   gap: 10px;
-  margin-bottom: 20px;
   padding: 8px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.04);
@@ -111,6 +121,28 @@ select {
 .page-nav__link--active {
   background: linear-gradient(135deg, #ff8f52, #ffd166);
   color: #101826;
+}
+
+.page-controls__model-field {
+  display: grid;
+  gap: 8px;
+  min-width: 240px;
+}
+
+.page-controls__model-field span {
+  color: #c0cbdd;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.page-controls__model-field select {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: #f5f7fb;
+  background: rgba(255, 255, 255, 0.04);
+  min-width: 240px;
 }
 
 .toolbar,
@@ -158,6 +190,19 @@ select {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.toolbar__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #cfd7e7;
+  font-weight: 600;
+  padding: 10px 2px;
+}
+
+.toolbar__toggle input {
+  accent-color: #ffb95e;
 }
 
 .toolbar button,

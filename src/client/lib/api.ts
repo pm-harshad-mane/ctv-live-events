@@ -7,7 +7,7 @@ import type {
   UpcomingCollectionResponseData,
   UpcomingMatchResponseData
 } from "../../shared/types/api";
-import type { MatchIdentity } from "../../shared/schemas/live";
+import type { MatchIdentity, ProviderMode } from "../../shared/schemas/live";
 
 type Envelope<T> = {
   data: T;
@@ -62,6 +62,21 @@ export const fetchConfig = async (
   const result = await requestJson<ConfigResponseData>(
     "/api/v1/config",
     undefined,
+    signal
+  );
+  return result.data;
+};
+
+export const switchActiveModel = async (
+  model: ProviderMode,
+  signal?: AbortSignal
+): Promise<ConfigResponseData> => {
+  const result = await requestJson<ConfigResponseData>(
+    "/api/v1/runtime/model",
+    {
+      method: "POST",
+      body: JSON.stringify({ model })
+    },
     signal
   );
   return result.data;
