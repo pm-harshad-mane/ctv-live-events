@@ -281,6 +281,8 @@ select {
 
 .event-card {
   padding: 20px;
+  display: flex;
+  flex-direction: column;
 }
 
 .event-card--selected {
@@ -393,6 +395,11 @@ select {
   border-radius: 999px;
   padding: 10px 14px;
   cursor: pointer;
+}
+
+.event-card__action {
+  align-self: flex-end;
+  margin-top: auto;
 }
 
 .detail-overlay {

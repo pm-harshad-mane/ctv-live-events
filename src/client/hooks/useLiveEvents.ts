@@ -81,6 +81,16 @@ const mergeStates = (
     };
   });
 
+const filterUiWarnings = (warnings: string[]): string[] =>
+  warnings.filter(
+    (warning) =>
+      !warning.startsWith(
+        "Gemini response did not include Google Search grounding metadata"
+      ) &&
+      !warning.startsWith("Gemini finish reason:") &&
+      !warning.startsWith("Gemini response preview:")
+  );
+
 export const useLiveEvents = () => {
   const [config, setConfig] = useState<PublicConfig | null>(null);
   const [events, setEvents] = useState<LiveEvent[]>([]);
@@ -340,7 +350,7 @@ export const useLiveEvents = () => {
 
         setEvents(discovery.data.events);
         setStaleMatchIds([]);
-        setLiveWarnings(discovery.warnings);
+        setLiveWarnings(filterUiWarnings(discovery.warnings));
         setServiceDisabled(false);
         setHasLoadedLiveOnce(true);
         setStateCountdown(config.state_refresh_after_seconds);
@@ -404,7 +414,7 @@ export const useLiveEvents = () => {
           controller.signal
         );
         setUpcomingEvents(upcoming.data.events);
-        setUpcomingWarnings(upcoming.warnings);
+        setUpcomingWarnings(filterUiWarnings(upcoming.warnings));
         setHasLoadedUpcomingOnce(true);
         setUpcomingStatusMessage(
           upcoming.data.events.length > 0
@@ -499,7 +509,7 @@ export const useLiveEvents = () => {
         setStaleMatchIds(
           payload.data.failed_matches.map((match) => match.match_id)
         );
-        setLiveWarnings(payload.warnings);
+        setLiveWarnings(filterUiWarnings(payload.warnings));
         setStateCountdown(config.state_refresh_after_seconds);
         setStatusMessage(
           payload.data.failed_matches.length > 0
@@ -566,7 +576,7 @@ export const useLiveEvents = () => {
     )
       .then((payload) => {
         setEvents((current) => mergeDiscovery(current, payload.data.events));
-        setLiveWarnings(payload.warnings);
+        setLiveWarnings(filterUiWarnings(payload.warnings));
         setStaleMatchIds((current) =>
           current.filter((matchId) =>
             payload.data.events.some((event) => event.match_id === matchId)

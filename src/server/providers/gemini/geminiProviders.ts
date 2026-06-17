@@ -47,16 +47,25 @@ const geminiFlavor: StructuredSearchProviderFlavor = {
             : 0,
         sources: Array.isArray(webSearch?.sources)
           ? webSearch.sources.map((source) => String(source))
-          : []
+          : [],
+        finish_reason:
+          typeof webSearch?.finish_reason === "string"
+            ? webSearch.finish_reason
+            : undefined,
+        response_preview:
+          typeof webSearch?.response_preview === "string"
+            ? webSearch.response_preview
+            : undefined
       }
     };
   },
   wasSearchInvoked: (providerDebug: ProviderDebugInfo): boolean =>
     Boolean(providerDebug.gemini_google_search?.tool_invoked),
   missingSearchWarning:
-    "Gemini response was rejected because no Google Search grounding metadata was present, even though grounding is required for this endpoint.",
+    "Gemini response did not include Google Search grounding metadata, so the results are being shown without verified grounding.",
   missingSearchFailureCode: "GOOGLE_SEARCH_REQUIRED",
-  responseObjectLabel: "Gemini"
+  responseObjectLabel: "Gemini",
+  allowUngroundedResults: true
 };
 
 export class GeminiLiveEventDiscoveryProvider extends StructuredSearchLiveEventDiscoveryProvider {

@@ -924,40 +924,36 @@ export const DetailPanel = ({
                 {upcomingEvent?.freshness.generated_at}
               </DetailField>
             </div>
-            <div className="detail-split">
-              <div>
-                <h4>
-                  <TooltipLabel
-                    label="Win probabilities"
-                    description={getAttributeHelp("Win probabilities")}
-                  />
-                </h4>
-                <ul className="event-card__points">
-                  {upcomingEvent?.upcoming_intelligence.win_probabilities.map(
-                    (prediction) => (
-                      <li key={prediction.participant_id}>
-                        {formatParticipantName(
-                          upcomingEvent.context,
-                          prediction.participant_id
-                        )}
-                        : {formatProbability(prediction.probability)}
-                      </li>
-                    )
-                  )}
-                </ul>
-              </div>
-              <div>
-                <h4>Pre-match intelligence</h4>
-                <ul className="event-card__points">
-                  <li>
-                    {upcomingEvent?.context.pre_match_intelligence.headline}
+          </section>
+
+          <section className="detail-card">
+            <h3>
+              <TooltipLabel
+                label="Win probabilities"
+                description={getAttributeHelp("Win probabilities")}
+              />
+            </h3>
+            <ul className="event-card__points">
+              {upcomingEvent?.upcoming_intelligence.win_probabilities.map(
+                (prediction) => (
+                  <li key={prediction.participant_id}>
+                    {formatParticipantName(
+                      upcomingEvent.context,
+                      prediction.participant_id
+                    )}
+                    : {formatProbability(prediction.probability)}
                   </li>
-                  <li>
-                    {upcomingEvent?.context.pre_match_intelligence.summary}
-                  </li>
-                </ul>
-              </div>
-            </div>
+                )
+              )}
+            </ul>
+          </section>
+
+          <section className="detail-card">
+            <h3>Pre-match intelligence</h3>
+            <ul className="event-card__points">
+              <li>{upcomingEvent?.context.pre_match_intelligence.headline}</li>
+              <li>{upcomingEvent?.context.pre_match_intelligence.summary}</li>
+            </ul>
           </section>
         </div>
       </section>

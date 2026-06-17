@@ -350,6 +350,46 @@ export type StructuredSearchProviderFlavor = {
   missingSearchWarning: string;
   missingSearchFailureCode: string;
   responseObjectLabel: string;
+  allowUngroundedResults?: boolean;
+};
+
+const buildMissingSearchWarnings = (
+  baseWarning: string,
+  providerDebug: ProviderDebugInfo
+): string[] => {
+  const warnings = [baseWarning];
+  const geminiDebug = providerDebug.gemini_google_search;
+
+  if (geminiDebug?.finish_reason) {
+    warnings.push(`Gemini finish reason: ${geminiDebug.finish_reason}`);
+  }
+
+  if (geminiDebug?.response_preview) {
+    warnings.push(`Gemini response preview: ${geminiDebug.response_preview}`);
+  }
+
+  return warnings;
+};
+
+const buildPayloadWarnings = (payload: Record<string, unknown>): string[] =>
+  Array.isArray(payload.warnings)
+    ? payload.warnings.map((warning) => String(warning))
+    : [];
+
+const buildWarningsWithOptionalMissingSearch = (
+  payload: Record<string, unknown>,
+  providerDebug: ProviderDebugInfo,
+  flavor: StructuredSearchProviderFlavor
+): string[] => {
+  const warnings = buildPayloadWarnings(payload);
+
+  if (!flavor.wasSearchInvoked(providerDebug) && flavor.allowUngroundedResults) {
+    warnings.unshift(
+      ...buildMissingSearchWarnings(flavor.missingSearchWarning, providerDebug)
+    );
+  }
+
+  return warnings;
 };
 
 export class StructuredSearchLiveEventDiscoveryProvider implements LiveEventDiscoveryProvider {
@@ -368,17 +408,25 @@ export class StructuredSearchLiveEventDiscoveryProvider implements LiveEventDisc
       this.flavor.responseObjectLabel
     );
     const providerDebug = this.flavor.getProviderDebug(payload);
-    if (!this.flavor.wasSearchInvoked(providerDebug)) {
+    if (
+      !this.flavor.wasSearchInvoked(providerDebug) &&
+      !this.flavor.allowUngroundedResults
+    ) {
       return {
         events: [],
-        warnings: [this.flavor.missingSearchWarning],
+        warnings: buildMissingSearchWarnings(
+          this.flavor.missingSearchWarning,
+          providerDebug
+        ),
         provider_debug: providerDebug
       };
     }
 
-    const warnings = Array.isArray(payload.warnings)
-      ? payload.warnings.map((warning) => String(warning))
-      : [];
+    const warnings = buildWarningsWithOptionalMissingSearch(
+      payload,
+      providerDebug,
+      this.flavor
+    );
 
     const events = Array.isArray(payload.events)
       ? payload.events
@@ -435,7 +483,10 @@ export class StructuredSearchLiveEventStateProvider implements LiveEventStatePro
       this.flavor.responseObjectLabel
     );
     const providerDebug = this.flavor.getProviderDebug(payload);
-    if (!this.flavor.wasSearchInvoked(providerDebug)) {
+    if (
+      !this.flavor.wasSearchInvoked(providerDebug) &&
+      !this.flavor.allowUngroundedResults
+    ) {
       return {
         states: [],
         failed_matches: input.matches.map((match) => ({
@@ -443,14 +494,19 @@ export class StructuredSearchLiveEventStateProvider implements LiveEventStatePro
           code: this.flavor.missingSearchFailureCode,
           message: this.flavor.missingSearchWarning
         })),
-        warnings: [this.flavor.missingSearchWarning],
+        warnings: buildMissingSearchWarnings(
+          this.flavor.missingSearchWarning,
+          providerDebug
+        ),
         provider_debug: providerDebug
       };
     }
 
-    const warnings = Array.isArray(payload.warnings)
-      ? payload.warnings.map((warning) => String(warning))
-      : [];
+    const warnings = buildWarningsWithOptionalMissingSearch(
+      payload,
+      providerDebug,
+      this.flavor
+    );
 
     const states = Array.isArray(payload.states)
       ? payload.states.map((state) =>
@@ -512,7 +568,10 @@ export class StructuredSearchLiveEventLookupProvider implements LiveEventLookupP
       }),
       this.flavor.responseObjectLabel
     );
-    if (!this.flavor.wasSearchInvoked(this.flavor.getProviderDebug(payload))) {
+    if (
+      !this.flavor.wasSearchInvoked(this.flavor.getProviderDebug(payload)) &&
+      !this.flavor.allowUngroundedResults
+    ) {
       return null;
     }
     return payload.context ? matchContextSchema.parse(payload.context) : null;
@@ -527,7 +586,10 @@ export class StructuredSearchLiveEventLookupProvider implements LiveEventLookupP
       }),
       this.flavor.responseObjectLabel
     );
-    if (!this.flavor.wasSearchInvoked(this.flavor.getProviderDebug(payload))) {
+    if (
+      !this.flavor.wasSearchInvoked(this.flavor.getProviderDebug(payload)) &&
+      !this.flavor.allowUngroundedResults
+    ) {
       return null;
     }
     return payload.live_state
@@ -549,7 +611,10 @@ export class StructuredSearchLiveEventLookupProvider implements LiveEventLookupP
       }),
       this.flavor.responseObjectLabel
     );
-    if (!this.flavor.wasSearchInvoked(this.flavor.getProviderDebug(payload))) {
+    if (
+      !this.flavor.wasSearchInvoked(this.flavor.getProviderDebug(payload)) &&
+      !this.flavor.allowUngroundedResults
+    ) {
       return null;
     }
     if (!payload.event) {
@@ -582,10 +647,16 @@ export class StructuredSearchUpcomingEventProvider implements UpcomingEventProvi
       this.flavor.responseObjectLabel
     );
     const providerDebug = this.flavor.getProviderDebug(payload);
-    if (!this.flavor.wasSearchInvoked(providerDebug)) {
+    if (
+      !this.flavor.wasSearchInvoked(providerDebug) &&
+      !this.flavor.allowUngroundedResults
+    ) {
       return {
         events: [],
-        warnings: [this.flavor.missingSearchWarning],
+        warnings: buildMissingSearchWarnings(
+          this.flavor.missingSearchWarning,
+          providerDebug
+        ),
         provider_debug: providerDebug
       };
     }
@@ -605,9 +676,11 @@ export class StructuredSearchUpcomingEventProvider implements UpcomingEventProvi
               matchesRequestedSport(input.sport, event.context.match.sport)
             )
         : [],
-      warnings: Array.isArray(payload.warnings)
-        ? payload.warnings.map((warning) => String(warning))
-        : [],
+      warnings: buildWarningsWithOptionalMissingSearch(
+        payload,
+        providerDebug,
+        this.flavor
+      ),
       provider_debug: providerDebug
     };
   }
@@ -621,7 +694,10 @@ export class StructuredSearchUpcomingEventProvider implements UpcomingEventProvi
       }),
       this.flavor.responseObjectLabel
     );
-    if (!this.flavor.wasSearchInvoked(this.flavor.getProviderDebug(payload))) {
+    if (
+      !this.flavor.wasSearchInvoked(this.flavor.getProviderDebug(payload)) &&
+      !this.flavor.allowUngroundedResults
+    ) {
       return null;
     }
     return payload.event

@@ -21,6 +21,8 @@ export type ProviderDebugInfo = {
     query_count: number;
     source_count: number;
     sources: string[];
+    finish_reason?: string;
+    response_preview?: string;
   };
 };
 

@@ -68,9 +68,86 @@ describe("Gemini providers", () => {
     );
   });
 
-  it("fails closed when grounding metadata is missing", async () => {
+  it("returns Gemini results with warnings when grounding metadata is missing", async () => {
     const transport = createTransport(() => ({
-      events: [],
+      _gemini_metadata: {
+        web_search: {
+          tool_invoked: false,
+          query_count: 0,
+          source_count: 0,
+          sources: [],
+          finish_reason: "STOP",
+          response_preview: '{"events":[{"match_id":"soccer:demo:upcoming"}]}'
+        }
+      },
+      events: [
+        {
+          match_id: "soccer:demo:upcoming",
+          context: {
+            match: {
+              match_id: "soccer:demo:upcoming",
+              match_name: "Portugal vs DR Congo",
+              sport: "soccer",
+              tournament_name: "FIFA World Cup",
+              tournament_stage: "Group Stage",
+              scheduled_start_time: "2026-06-17T19:00:00Z",
+              venue: {
+                stadium: "MetLife Stadium",
+                city: "East Rutherford",
+                state: "New Jersey",
+                country: "United States"
+              }
+            },
+            participants: [
+              {
+                participant_id: "por",
+                name: "Portugal",
+                short_name: "POR",
+                role: "home",
+                ranking: "7",
+                recent_form: ["W", "D", "W"]
+              },
+              {
+                participant_id: "cod",
+                name: "DR Congo",
+                short_name: "COD",
+                role: "away",
+                ranking: "61",
+                recent_form: ["W", "L", "W"]
+              }
+            ],
+            pre_match_intelligence: {
+              headline: "Portugal should control most phases",
+              summary: "DR Congo still has transition threat.",
+              expected_competitiveness: 71,
+              key_matchup: "Portugal midfield control vs Congo counters"
+            },
+            context_version: 1,
+            context_fingerprint: "ctx_por_cod",
+            context_generated_at: "2026-06-17T17:00:00Z"
+          },
+          upcoming_intelligence: {
+            headline: "Portugal favored in the group opener",
+            summary: "This should still produce dangerous transition moments.",
+            projected_competitiveness: 74,
+            watch_reasons: ["Portugal chance creation", "Congo counterattacks"],
+            win_probabilities: [
+              {
+                participant_id: "por",
+                probability: 0.62
+              },
+              {
+                participant_id: "cod",
+                probability: 0.38
+              }
+            ]
+          },
+          freshness: {
+            generated_at: "2026-06-17T17:00:00Z",
+            age_seconds: 30
+          }
+        }
+      ],
       warnings: []
     }));
     const provider = new GeminiUpcomingEventProvider(transport);
@@ -81,12 +158,20 @@ describe("Gemini providers", () => {
       days: 7
     });
 
-    expect(result.events).toEqual([]);
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]?.match_id).toBe("soccer:demo:upcoming");
     expect(result.warnings[0]).toContain(
-      "no Google Search grounding metadata was present"
+      "did not include Google Search grounding metadata"
+    );
+    expect(result.warnings[1]).toContain("Gemini finish reason: STOP");
+    expect(result.warnings[2]).toContain(
+      'Gemini response preview: {"events":[{"match_id":"soccer:demo:upcoming"}]}'
     );
     expect(result.provider_debug?.gemini_google_search?.tool_invoked).toBe(
       false
+    );
+    expect(result.provider_debug?.gemini_google_search?.response_preview).toBe(
+      '{"events":[{"match_id":"soccer:demo:upcoming"}]}'
     );
   });
 });

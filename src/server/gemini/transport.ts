@@ -46,7 +46,55 @@ type GeminiGroundingMetadata = {
     query_count: number;
     source_count: number;
     sources: string[];
+    finish_reason?: string;
+    response_preview?: string;
   };
+};
+
+const previewText = (value: string, maxLength = 280): string => {
+  const singleLine = value.replace(/\s+/g, " ").trim();
+  if (singleLine.length <= maxLength) {
+    return singleLine;
+  }
+  return `${singleLine.slice(0, maxLength)}...`;
+};
+
+const unwrapJsonText = (value: string): string => {
+  const trimmed = value.trim().replace(/^\uFEFF/, "");
+  const fencedMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fencedMatch?.[1]) {
+    return fencedMatch[1].trim();
+  }
+
+  return trimmed;
+};
+
+const extractJsonFragment = (value: string): string | null => {
+  const trimmed = unwrapJsonText(value);
+  const objectStart = trimmed.indexOf("{");
+  const arrayStart = trimmed.indexOf("[");
+
+  let start = -1;
+  let closing = "";
+
+  if (objectStart >= 0 && (arrayStart === -1 || objectStart < arrayStart)) {
+    start = objectStart;
+    closing = "}";
+  } else if (arrayStart >= 0) {
+    start = arrayStart;
+    closing = "]";
+  }
+
+  if (start === -1) {
+    return null;
+  }
+
+  const end = trimmed.lastIndexOf(closing);
+  if (end <= start) {
+    return null;
+  }
+
+  return trimmed.slice(start, end + 1);
 };
 
 const extractGroundingMetadata = (
@@ -71,6 +119,10 @@ const extractGroundingMetadata = (
     candidates.length > 0 && candidates[0] && typeof candidates[0] === "object"
       ? (candidates[0] as Record<string, unknown>)
       : null;
+  const finishReason =
+    candidate && typeof candidate.finishReason === "string"
+      ? candidate.finishReason
+      : undefined;
   const groundingMetadata =
     candidate &&
     "groundingMetadata" in candidate &&
@@ -92,6 +144,13 @@ const extractGroundingMetadata = (
     Array.isArray(groundingMetadata.webSearchQueries)
       ? groundingMetadata.webSearchQueries
       : [];
+  const responsePreview = (() => {
+    try {
+      return previewText(extractOutputText(payload));
+    } catch {
+      return undefined;
+    }
+  })();
 
   for (const chunk of groundingChunks) {
     if (!chunk || typeof chunk !== "object") {
@@ -123,7 +182,9 @@ const extractGroundingMetadata = (
       tool_invoked: groundingMetadata !== null,
       query_count: webSearchQueries.length,
       source_count: sourceLabels.size,
-      sources: Array.from(sourceLabels)
+      sources: Array.from(sourceLabels),
+      finish_reason: finishReason,
+      response_preview: responsePreview
     }
   };
 };
@@ -170,6 +231,37 @@ const extractOutputText = (payload: unknown): string => {
   throw new Error("Gemini response did not include text content.");
 };
 
+const parseGeminiApiPayload = (raw: string): unknown => {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    throw new Error(
+      `Gemini returned an invalid API JSON payload: ${previewText(raw)}`
+    );
+  }
+};
+
+const parseStructuredJsonText = (text: string): unknown => {
+  const directCandidate = unwrapJsonText(text);
+
+  try {
+    return JSON.parse(directCandidate) as unknown;
+  } catch {
+    const fragment = extractJsonFragment(text);
+    if (fragment) {
+      try {
+        return JSON.parse(fragment) as unknown;
+      } catch {
+        // fall through to clearer error below
+      }
+    }
+
+    throw new Error(
+      `Gemini returned non-JSON structured text: ${previewText(text)}`
+    );
+  }
+};
+
 export class GeminiStructuredTransport implements StructuredResponseTransport {
   constructor(private readonly env: AppEnv) {}
 
@@ -197,13 +289,14 @@ export class GeminiStructuredTransport implements StructuredResponseTransport {
       tools:
         request.tools && request.tools.length > 0
           ? request.tools.map((tool) =>
-              tool.type === "web_search" ? { googleSearch: {} } : tool
+              tool.type === "web_search" ? { google_search: {} } : tool
             )
           : undefined,
       generationConfig: {
         responseMimeType: "application/json",
         responseJsonSchema: request.schema.schema,
-        maxOutputTokens: request.maxOutputTokens ?? 4000
+        maxOutputTokens:
+          request.maxOutputTokens ?? this.env.geminiMaxOutputTokens
       }
     });
 
@@ -260,7 +353,7 @@ export class GeminiStructuredTransport implements StructuredResponseTransport {
       req.end();
     });
 
-    const parsed = JSON.parse(raw) as unknown;
+    const parsed = parseGeminiApiPayload(raw);
     const text = extractOutputText(parsed);
     if (text.trim().length === 0) {
       throw new Error(
@@ -268,7 +361,7 @@ export class GeminiStructuredTransport implements StructuredResponseTransport {
       );
     }
 
-    const structured = JSON.parse(text) as unknown;
+    const structured = parseStructuredJsonText(text);
     const metadata = extractGroundingMetadata(parsed);
 
     if (structured && typeof structured === "object") {

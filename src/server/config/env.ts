@@ -99,6 +99,7 @@ export type AppEnv = {
   defaultProviderMode: SupportedProviderMode;
   openAiRequestTimeoutMs: number;
   geminiRequestTimeoutMs: number;
+  geminiMaxOutputTokens: number;
   defaultRegion: string;
   defaultUpcomingDays: number;
   maxUpcomingDays: number;
@@ -164,6 +165,10 @@ export const getEnv = (): AppEnv => {
     geminiRequestTimeoutMs: numberValue(
       process.env.GEMINI_REQUEST_TIMEOUT_MS,
       90000
+    ),
+    geminiMaxOutputTokens: numberValue(
+      process.env.GEMINI_MAX_OUTPUT_TOKENS,
+      12000
     ),
     defaultRegion: process.env.DEFAULT_REGION ?? "north-america",
     defaultUpcomingDays: numberValue(process.env.DEFAULT_UPCOMING_DAYS, 7),
