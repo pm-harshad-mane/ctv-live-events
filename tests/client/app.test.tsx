@@ -632,7 +632,7 @@ describe("App", () => {
     render(<App />);
 
     expect(screen.getByText("Loading live soccer...")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Live" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Live" })).toBeInTheDocument();
     expect(
       screen.queryByText("Loading upcoming soccer...", { exact: false })
     ).not.toBeInTheDocument();
@@ -658,6 +658,10 @@ describe("App", () => {
       ).toBeInTheDocument();
     });
 
+    expect(screen.getByText("56%")).toBeInTheDocument();
+    expect(screen.getByText("44%")).toBeInTheDocument();
+    expect(screen.getByText("Criticality")).toBeInTheDocument();
+    expect(screen.getByText("91")).toBeInTheDocument();
     expect(
       screen.getByText("Time left: 2m 14s", { exact: false })
     ).toBeInTheDocument();
@@ -673,7 +677,7 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "Upcoming" }));
+    await user.click(screen.getByRole("link", { name: "Upcoming" }));
 
     await waitFor(() => {
       expect(
@@ -713,7 +717,7 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "Upcoming" }));
+    await user.click(screen.getByRole("link", { name: "Upcoming" }));
 
     await waitFor(() => {
       expect(screen.getByDisplayValue("7 days")).toBeVisible();
@@ -752,6 +756,31 @@ describe("App", () => {
         expect.anything()
       );
     });
+  });
+
+  it("shows all enabled sports while keeping soccer selected by default", async () => {
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("Soccer")).toBeVisible();
+    });
+
+    const sportSelect = screen.getByDisplayValue("Soccer");
+    const optionLabels = within(sportSelect)
+      .getAllByRole("option")
+      .map((option) => option.textContent);
+
+    expect(optionLabels).toEqual([
+      "All",
+      "American Football",
+      "Baseball",
+      "Basketball",
+      "Cricket",
+      "Hockey",
+      "MMA",
+      "Soccer",
+      "Tennis"
+    ]);
   });
 
   it("loads dedicated live detail endpoints for the selected live match", async () => {
@@ -831,7 +860,7 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "Upcoming" }));
+    await user.click(screen.getByRole("link", { name: "Upcoming" }));
 
     const upcomingHeading = await screen.findByRole("heading", {
       name: "Upcoming matches."
@@ -878,7 +907,9 @@ describe("App", () => {
     ).toBeInTheDocument();
 
     expect(global.fetch).not.toHaveBeenCalledWith(
-      expect.stringContaining("/api/v1/events/upcoming/basketball%3Anba%3Aupcoming-demo"),
+      expect.stringContaining(
+        "/api/v1/events/upcoming/basketball%3Anba%3Aupcoming-demo"
+      ),
       expect.anything()
     );
   });

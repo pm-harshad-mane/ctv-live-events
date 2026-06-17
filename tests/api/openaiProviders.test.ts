@@ -520,9 +520,9 @@ describe("OpenAI providers", () => {
 
     expect(result.states).toHaveLength(1);
     expect(result.states[0]?.live_predictions.prediction_confidence).toBe(0.82);
-    expect(result.states[0]?.live_predictions.win_probabilities[0]?.probability).toBe(
-      0.58
-    );
+    expect(
+      result.states[0]?.live_predictions.win_probabilities[0]?.probability
+    ).toBe(0.58);
     expect(result.states[0]?.verification.confidence).toBe(0.82);
   });
 

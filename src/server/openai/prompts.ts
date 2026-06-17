@@ -14,11 +14,11 @@ const outputFormattingRules = [
 
 const buildSupportedSportsRule = (sport: string): string =>
   sport === "all"
-    ? "This MVP currently supports only basketball and soccer. If sport=all, return only basketball or soccer matches."
+    ? "This MVP currently supports basketball, soccer, american-football, baseball, cricket, hockey, tennis, and mma. If sport=all, return only matches from those sports."
     : `Return only matches for the requested sport=${sport}.`;
 
 const sportSpecificRule =
-  "For live_state.sport_specific, use only these keys: quarter, shot_clock_seconds, foul_pressure, phase, stoppage_time_minutes, pressure_side. Always include all six keys, and use null for keys that do not apply to the current sport.";
+  "For live_state.sport_specific, use only these keys: quarter, shot_clock_seconds, foul_pressure, phase, stoppage_time_minutes, pressure_side, attacking_side, possession_team, down, distance_yards, yard_line, red_zone, inning, innings_half, outs, balls, strikes, runners_on_base, over, wickets, run_rate, target_runs, power_play, period_number, pulled_goalie, current_set, set_score, serve_side, break_point_pressure, round, control_time_seconds, finish_threat. Always include all keys, and use null for keys that do not apply to the current sport.";
 
 export const buildDiscoveryPrompt = (input: DiscoverRequest) => ({
   instructions: [

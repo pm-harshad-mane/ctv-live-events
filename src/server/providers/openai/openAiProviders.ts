@@ -37,7 +37,16 @@ const failedMatchSchema = {
   message: ""
 };
 
-const supportedSports = new Set(["basketball", "soccer"]);
+const supportedSports = new Set([
+  "basketball",
+  "soccer",
+  "american-football",
+  "baseball",
+  "cricket",
+  "hockey",
+  "tennis",
+  "mma"
+]);
 const minimumLiveVerificationConfidence = 0.55;
 
 const matchesRequestedSport = (
@@ -381,7 +390,9 @@ export class OpenAiLiveEventDiscoveryProvider implements LiveEventDiscoveryProvi
 
     const events = Array.isArray(payload.events)
       ? payload.events
-          .map((event) => liveEventSchema.parse(normalizeLiveEventCandidate(event)))
+          .map((event) =>
+            liveEventSchema.parse(normalizeLiveEventCandidate(event))
+          )
           .filter((event) =>
             matchesRequestedSport(input.sport, event.context?.match.sport)
           )
@@ -531,7 +542,9 @@ export class OpenAiLiveEventLookupProvider implements LiveEventLookupProvider {
       return null;
     }
 
-    const event = liveEventSchema.parse(normalizeLiveEventCandidate(payload.event));
+    const event = liveEventSchema.parse(
+      normalizeLiveEventCandidate(payload.event)
+    );
     return assessLiveEventQuality(event).accepted ? event : null;
   }
 }
@@ -585,7 +598,9 @@ export class OpenAiUpcomingEventProvider implements UpcomingEventProvider {
       return null;
     }
     return payload.event
-      ? upcomingEventSchema.parse(normalizeUpcomingEventCandidate(payload.event))
+      ? upcomingEventSchema.parse(
+          normalizeUpcomingEventCandidate(payload.event)
+        )
       : null;
   }
 }

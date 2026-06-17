@@ -35,7 +35,8 @@ const humanizeKey = (value: string): string =>
     .join(" ");
 
 const ATTRIBUTE_HELP: Record<string, string> = {
-  Status: "The current lifecycle state of the match, such as live, paused, completed, or delayed.",
+  Status:
+    "The current lifecycle state of the match, such as live, paused, completed, or delayed.",
   "Situation code":
     "A compact machine-readable tag that describes the live game state at this moment.",
   "Key entities":
@@ -56,12 +57,10 @@ const ATTRIBUTE_HELP: Record<string, string> = {
     "The current margin between the two sides based on the live score.",
   "Current control":
     "Which side has possession, territorial control, or the clearest tactical initiative right now.",
-  Venue:
-    "The stadium or arena location where the match is being played.",
+  Venue: "The stadium or arena location where the match is being played.",
   "Key matchup":
     "The most important tactical or talent battle expected to shape this match.",
-  Participants:
-    "The teams or players taking part in the match.",
+  Participants: "The teams or players taking part in the match.",
   Excitement:
     "An overall score for how dramatic or entertaining the live state is right now.",
   "Current excitement":
@@ -106,14 +105,14 @@ const ATTRIBUTE_HELP: Record<string, string> = {
     "A score describing how strongly the latest event affected the state of the match.",
   "Verification status":
     "Whether the live state is fully verified, partially inferred, or otherwise uncertain.",
-  "Generated at":
-    "When this live-state snapshot was produced by the backend.",
+  "Generated at": "When this live-state snapshot was produced by the backend.",
   "Source observation time":
     "The timestamp of the source data observation used to build this state, if available."
 };
 
 const SPORT_SPECIFIC_HELP: Record<string, string> = {
-  quarter: "The current quarter of play for basketball or other quarter-based sports.",
+  quarter:
+    "The current quarter of play for basketball or other quarter-based sports.",
   phase:
     "A sport-specific phase label for the current state of play, such as open second half or power play.",
   stoppage_time_minutes:
@@ -124,14 +123,44 @@ const SPORT_SPECIFIC_HELP: Record<string, string> = {
     "The team currently in possession of the ball or otherwise controlling play.",
   attacking_side:
     "The side currently moving forward in the more dangerous attacking phase.",
-  down_and_distance:
-    "The current football down and yards-to-go situation.",
+  down: "The current down number in American football.",
+  distance_yards:
+    "How many yards remain for a first down in American football.",
+  yard_line:
+    "The current field position in American football, expressed as a yard line.",
+  red_zone:
+    "Whether the offense has entered the red-zone area in American football.",
+  inning:
+    "The current inning number in baseball or another inning-based sport.",
+  innings_half:
+    "Whether the current baseball inning is in the top or bottom half.",
+  outs: "How many outs are currently recorded in the inning.",
+  balls: "The current ball count on the batter.",
+  strikes: "The current strike count on the batter.",
   runners_on_base:
     "Which bases are currently occupied in baseball or softball.",
+  over: "The current over in cricket, including balls into the over when available.",
+  wickets:
+    "How many wickets the batting side has lost in the current cricket innings.",
+  run_rate: "The current or projected runs-per-over scoring pace in cricket.",
+  target_runs:
+    "The chase target or benchmark total relevant to the cricket innings.",
+  power_play: "Whether the current phase is inside a power play in cricket.",
+  period_number:
+    "The current period number in hockey or another period-based sport.",
+  pulled_goalie:
+    "Whether a hockey team has removed its goalie for an extra attacker.",
+  current_set: "The current set number being played in a set-based sport.",
   set_score:
     "The current set-by-set score context for sports like tennis or volleyball.",
-  serve_side:
-    "The player or side currently serving."
+  serve_side: "The player or side currently serving.",
+  break_point_pressure:
+    "Whether the receiving side is threatening a break point in tennis.",
+  round: "The current round number in a combat sport.",
+  control_time_seconds:
+    "The accumulated top-control or grappling control time in a combat sport.",
+  finish_threat:
+    "A combat-sport label describing which side is carrying the stronger immediate finish danger."
 };
 
 const getAttributeHelp = (
@@ -692,23 +721,24 @@ export const DetailPanel = ({
               <div className="detail-sport-specific">
                 <h4>Sport-specific state</h4>
                 <div className="detail-sport-specific__grid">
-                  {Object.entries(
-                    liveMatchDetail.liveState.sport_specific
-                  )
-                    .filter(([, value]) => value !== null && value !== undefined)
+                  {Object.entries(liveMatchDetail.liveState.sport_specific)
+                    .filter(
+                      ([, value]) => value !== null && value !== undefined
+                    )
                     .map(([key, value]) => (
-                    <div
-                      key={key}
-                      className="detail-sport-specific__item"
-                    >
-                      <TooltipLabel
-                        label={humanizeKey(key)}
-                        description={getSportSpecificHelp(key)}
-                      />
-                      <strong>
-                        {formatSportSpecificValue(key, value, participantName)}
-                      </strong>
-                    </div>
+                      <div key={key} className="detail-sport-specific__item">
+                        <TooltipLabel
+                          label={humanizeKey(key)}
+                          description={getSportSpecificHelp(key)}
+                        />
+                        <strong>
+                          {formatSportSpecificValue(
+                            key,
+                            value,
+                            participantName
+                          )}
+                        </strong>
+                      </div>
                     ))}
                 </div>
               </div>
@@ -856,8 +886,12 @@ export const DetailPanel = ({
               <div>
                 <h4>Pre-match intelligence</h4>
                 <ul className="event-card__points">
-                  <li>{upcomingEvent?.context.pre_match_intelligence.headline}</li>
-                  <li>{upcomingEvent?.context.pre_match_intelligence.summary}</li>
+                  <li>
+                    {upcomingEvent?.context.pre_match_intelligence.headline}
+                  </li>
+                  <li>
+                    {upcomingEvent?.context.pre_match_intelligence.summary}
+                  </li>
                 </ul>
               </div>
             </div>

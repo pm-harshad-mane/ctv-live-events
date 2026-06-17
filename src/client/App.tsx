@@ -42,7 +42,9 @@ export const App = () => {
     rediscoverNow,
     retryAfterDisabled
   } = useLiveEvents();
-  const [activePage, setActivePage] = useState<AppPage>(() => getPageFromHash());
+  const [activePage, setActivePage] = useState<AppPage>(() =>
+    getPageFromHash()
+  );
 
   const showLiveLoadingState =
     events.length === 0 &&
@@ -68,10 +70,6 @@ export const App = () => {
     window.addEventListener("hashchange", syncPage);
     return () => window.removeEventListener("hashchange", syncPage);
   }, []);
-
-  const navigateToPage = (page: AppPage) => {
-    window.location.hash = page === "live" ? "/live" : "/upcoming";
-  };
 
   return (
     <main className="page-shell">
@@ -104,24 +102,22 @@ export const App = () => {
       </section>
 
       <nav className="page-nav" aria-label="Sections">
-        <button
-          type="button"
+        <a
+          href="#/live"
           className={`page-nav__link ${
             activePage === "live" ? "page-nav__link--active" : ""
           }`}
-          onClick={() => navigateToPage("live")}
         >
           Live
-        </button>
-        <button
-          type="button"
+        </a>
+        <a
+          href="#/upcoming"
           className={`page-nav__link ${
             activePage === "upcoming" ? "page-nav__link--active" : ""
           }`}
-          onClick={() => navigateToPage("upcoming")}
         >
           Upcoming
-        </button>
+        </a>
       </nav>
 
       <section className="toolbar">
@@ -155,31 +151,15 @@ export const App = () => {
               }))
             }
           >
-            <optgroup label="Available now">
-              <option value="all">All</option>
-              <option value="basketball">Basketball</option>
-              <option value="soccer">Soccer</option>
-            </optgroup>
-            <optgroup label="Coming soon">
-              <option value="football" disabled>
-                American Football
-              </option>
-              <option value="baseball" disabled>
-                Baseball
-              </option>
-              <option value="cricket" disabled>
-                Cricket
-              </option>
-              <option value="hockey" disabled>
-                Hockey
-              </option>
-              <option value="tennis" disabled>
-                Tennis
-              </option>
-              <option value="mma" disabled>
-                MMA
-              </option>
-            </optgroup>
+            <option value="all">All</option>
+            <option value="american-football">American Football</option>
+            <option value="baseball">Baseball</option>
+            <option value="basketball">Basketball</option>
+            <option value="cricket">Cricket</option>
+            <option value="hockey">Hockey</option>
+            <option value="mma">MMA</option>
+            <option value="soccer">Soccer</option>
+            <option value="tennis">Tennis</option>
           </select>
         </label>
 
@@ -223,7 +203,9 @@ export const App = () => {
           {hasLoadedLiveOnce ? (
             <>
               <p>Next state refresh in {stateCountdown}s</p>
-              <p>Searching for newly started matches every {discoveryCountdown}s</p>
+              <p>
+                Searching for newly started matches every {discoveryCountdown}s
+              </p>
             </>
           ) : null}
           {errorMessage ? (
@@ -270,7 +252,8 @@ export const App = () => {
           </div>
           {showLiveLoadingState ? (
             <div className="loading-state">
-              Loading live {filters.sport === "all" ? "events" : filters.sport}...
+              Loading live {filters.sport === "all" ? "events" : filters.sport}
+              ...
             </div>
           ) : events.length > 0 ? (
             <section className="event-grid">
@@ -286,8 +269,8 @@ export const App = () => {
             </section>
           ) : (
             <div className="empty-state">
-              No live {filters.sport === "all" ? "events" : filters.sport} matches
-              are available right now.
+              No live {filters.sport === "all" ? "events" : filters.sport}{" "}
+              matches are available right now.
             </div>
           )}
         </section>
@@ -319,8 +302,8 @@ export const App = () => {
             </section>
           ) : (
             <div className="empty-state">
-              No upcoming {filters.sport === "all" ? "matches" : filters.sport} in
-              the selected window.
+              No upcoming {filters.sport === "all" ? "matches" : filters.sport}{" "}
+              in the selected window.
             </div>
           )}
         </section>

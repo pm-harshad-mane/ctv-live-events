@@ -52,25 +52,28 @@ export const UpcomingCard = ({
       <div className="event-card__metrics">
         <div className="event-card__metric">
           <span>Competitiveness</span>
-          <strong>{event.upcoming_intelligence.projected_competitiveness}</strong>
+          <strong>
+            {event.upcoming_intelligence.projected_competitiveness}
+          </strong>
         </div>
         <div className="event-card__metric">
           <span>Start time</span>
           <strong>
-            {new Date(event.context.match.scheduled_start_time).toLocaleTimeString(
-              [],
-              {
-                hour: "numeric",
-                minute: "2-digit"
-              }
-            )}
+            {new Date(
+              event.context.match.scheduled_start_time
+            ).toLocaleTimeString([], {
+              hour: "numeric",
+              minute: "2-digit"
+            })}
           </strong>
         </div>
       </div>
       <p className="event-card__upcoming-headline">
         {event.upcoming_intelligence.headline}
       </p>
-      <p className="event-card__summary">{event.upcoming_intelligence.summary}</p>
+      <p className="event-card__summary">
+        {event.upcoming_intelligence.summary}
+      </p>
       <ul className="event-card__points">
         {event.upcoming_intelligence.watch_reasons.map((reason) => (
           <li key={reason}>{reason}</li>

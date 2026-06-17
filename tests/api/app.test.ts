@@ -87,10 +87,38 @@ describe("API service and middleware", () => {
       known_matches: []
     });
 
-    expect(result.events).toHaveLength(1);
-    expect(result.events[0].context?.match.tournament_name).toBe(
-      "Premier League"
-    );
+    expect(result.events).toHaveLength(2);
+    expect(
+      result.events.map((event) => event.context?.match.sport).sort()
+    ).toEqual(["soccer", "tennis"]);
+  });
+
+  it("supports all enabled live sports in mock discovery", async () => {
+    const service = createService();
+    const sports = [
+      "american-football",
+      "baseball",
+      "basketball",
+      "cricket",
+      "hockey",
+      "mma",
+      "soccer",
+      "tennis"
+    ];
+
+    for (const sport of sports) {
+      const result = await service.discover({
+        region: "global",
+        sport,
+        include_context: true,
+        known_matches: []
+      });
+
+      expect(result.events.length).toBeGreaterThan(0);
+      expect(
+        result.events.every((event) => event.context?.match.sport === sport)
+      ).toBe(true);
+    }
   });
 
   it("returns sport-specific soccer state details", async () => {
@@ -186,8 +214,37 @@ describe("API service and middleware", () => {
       days: 7
     });
 
-    expect(result.events).toHaveLength(1);
-    expect(result.events[0].context.match.tournament_name).toBe("B.League");
+    expect(result.events).toHaveLength(2);
+    expect(
+      result.events.map((event) => event.context.match.sport).sort()
+    ).toEqual(["basketball", "cricket"]);
+  });
+
+  it("supports all enabled sports in upcoming lookups", async () => {
+    const service = createService();
+    const sports = [
+      "american-football",
+      "baseball",
+      "basketball",
+      "cricket",
+      "hockey",
+      "mma",
+      "soccer",
+      "tennis"
+    ];
+
+    for (const sport of sports) {
+      const result = await service.getUpcoming({
+        region: "global",
+        sport,
+        days: 7
+      });
+
+      expect(result.events.length).toBeGreaterThan(0);
+      expect(
+        result.events.every((event) => event.context.match.sport === sport)
+      ).toBe(true);
+    }
   });
 
   it("returns a specific upcoming match by id", async () => {

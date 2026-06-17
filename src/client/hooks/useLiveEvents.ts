@@ -204,8 +204,9 @@ export const useLiveEvents = () => {
     setSelectedLiveMatchDetail(null);
     setDetailError(null);
     const selectedEvent =
-      upcomingEvents.find((event) => event.match_id === selectedUpcomingMatchId) ??
-      null;
+      upcomingEvents.find(
+        (event) => event.match_id === selectedUpcomingMatchId
+      ) ?? null;
 
     if (!selectedEvent) {
       setSelectedUpcomingMatchDetail(null);

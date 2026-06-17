@@ -27,6 +27,95 @@ const nowIso = (): string => new Date().toISOString();
 const matchesRegion = (seedRegion: string, requestedRegion: string): boolean =>
   requestedRegion === "global" || seedRegion === requestedRegion;
 
+const sportSpecificBase = (): LiveState["sport_specific"] => ({
+  quarter: null,
+  shot_clock_seconds: null,
+  foul_pressure: null,
+  phase: null,
+  stoppage_time_minutes: null,
+  pressure_side: null,
+  attacking_side: null,
+  possession_team: null,
+  down: null,
+  distance_yards: null,
+  yard_line: null,
+  red_zone: null,
+  inning: null,
+  innings_half: null,
+  outs: null,
+  balls: null,
+  strikes: null,
+  runners_on_base: null,
+  over: null,
+  wickets: null,
+  run_rate: null,
+  target_runs: null,
+  power_play: null,
+  period_number: null,
+  pulled_goalie: null,
+  current_set: null,
+  set_score: null,
+  serve_side: null,
+  break_point_pressure: null,
+  round: null,
+  control_time_seconds: null,
+  finish_threat: null
+});
+
+const buildParticipantScores = (
+  seed: MatchSeed,
+  homeScore: number,
+  awayScore: number
+): LiveState["score"]["participant_scores"] => [
+  {
+    participant_id: seed.identity.participants[0].participant_id,
+    display_score: String(homeScore),
+    numeric_score: homeScore
+  },
+  {
+    participant_id: seed.identity.participants[1].participant_id,
+    display_score: String(awayScore),
+    numeric_score: awayScore
+  }
+];
+
+const buildWinProbabilities = (
+  seed: MatchSeed,
+  homeProbability: number
+): LiveState["live_predictions"]["win_probabilities"] => [
+  {
+    participant_id: seed.identity.participants[0].participant_id,
+    probability: homeProbability
+  },
+  {
+    participant_id: seed.identity.participants[1].participant_id,
+    probability: 1 - homeProbability
+  }
+];
+
+const buildWinProbabilityChanges = (
+  seed: MatchSeed,
+  homeDelta: number
+): LiveState["live_predictions"]["win_probability_changes"] => [
+  {
+    participant_id: seed.identity.participants[0].participant_id,
+    last_interval: homeDelta
+  },
+  {
+    participant_id: seed.identity.participants[1].participant_id,
+    last_interval: -homeDelta
+  }
+];
+
+const leadingParticipantId = (
+  seed: MatchSeed,
+  homeScore: number,
+  awayScore: number
+): string =>
+  homeScore >= awayScore
+    ? seed.identity.participants[0].participant_id
+    : seed.identity.participants[1].participant_id;
+
 const buildBasketballState = (
   seed: MatchSeed,
   minuteOffset: number,
@@ -34,10 +123,7 @@ const buildBasketballState = (
   awayScore: number
 ): LiveState => {
   const remainingSeconds = Math.max(24, 720 - minuteOffset * 11);
-  const leader =
-    homeScore >= awayScore
-      ? seed.identity.participants[0].participant_id
-      : seed.identity.participants[1].participant_id;
+  const leader = leadingParticipantId(seed, homeScore, awayScore);
 
   return {
     match_id: seed.identity.match_id,
@@ -54,26 +140,17 @@ const buildBasketballState = (
       remaining_seconds: remainingSeconds
     },
     score: {
-      participant_scores: [
-        {
-          participant_id: seed.identity.participants[0].participant_id,
-          display_score: String(homeScore),
-          numeric_score: homeScore
-        },
-        {
-          participant_id: seed.identity.participants[1].participant_id,
-          display_score: String(awayScore),
-          numeric_score: awayScore
-        }
-      ],
+      participant_scores: buildParticipantScores(seed, homeScore, awayScore),
       display: `${homeScore}-${awayScore}`,
       score_differential: Math.abs(homeScore - awayScore)
     },
     sport_specific: {
+      ...sportSpecificBase(),
       quarter: remainingSeconds <= 180 ? 4 : 3,
       shot_clock_seconds: Math.max(2, 24 - (minuteOffset % 20)),
       foul_pressure:
-        homeScore >= awayScore ? "away_bonus_watch" : "home_bonus_watch"
+        homeScore >= awayScore ? "away_bonus_watch" : "home_bonus_watch",
+      possession_team: seed.momentumParticipantId
     },
     current_possession_or_control: {
       participant_id: seed.momentumParticipantId,
@@ -139,26 +216,14 @@ const buildBasketballState = (
       reason_codes: ["shot_quality_edge", "back_to_back_scores"]
     },
     live_predictions: {
-      win_probabilities: [
-        {
-          participant_id: seed.identity.participants[0].participant_id,
-          probability: homeScore >= awayScore ? 0.57 : 0.43
-        },
-        {
-          participant_id: seed.identity.participants[1].participant_id,
-          probability: homeScore >= awayScore ? 0.43 : 0.57
-        }
-      ],
-      win_probability_changes: [
-        {
-          participant_id: seed.identity.participants[0].participant_id,
-          last_interval: homeScore >= awayScore ? 0.06 : -0.06
-        },
-        {
-          participant_id: seed.identity.participants[1].participant_id,
-          last_interval: homeScore >= awayScore ? -0.06 : 0.06
-        }
-      ],
+      win_probabilities: buildWinProbabilities(
+        seed,
+        homeScore >= awayScore ? 0.57 : 0.43
+      ),
+      win_probability_changes: buildWinProbabilityChanges(
+        seed,
+        homeScore >= awayScore ? 0.06 : -0.06
+      ),
       comeback_probability: homeScore === awayScore ? 0.5 : 0.41,
       upset_probability: 0.28,
       draw_probability: 0.01,
@@ -201,10 +266,7 @@ const buildSoccerState = (
 ): LiveState => {
   const elapsedMinutes = Math.min(89, 52 + minuteOffset * 2);
   const remainingSeconds = Math.max(60, (90 - elapsedMinutes) * 60);
-  const leader =
-    homeScore >= awayScore
-      ? seed.identity.participants[0].participant_id
-      : seed.identity.participants[1].participant_id;
+  const leader = leadingParticipantId(seed, homeScore, awayScore);
   const isLevel = homeScore === awayScore;
 
   return {
@@ -220,26 +282,17 @@ const buildSoccerState = (
       remaining_seconds: remainingSeconds
     },
     score: {
-      participant_scores: [
-        {
-          participant_id: seed.identity.participants[0].participant_id,
-          display_score: String(homeScore),
-          numeric_score: homeScore
-        },
-        {
-          participant_id: seed.identity.participants[1].participant_id,
-          display_score: String(awayScore),
-          numeric_score: awayScore
-        }
-      ],
+      participant_scores: buildParticipantScores(seed, homeScore, awayScore),
       display: `${homeScore}-${awayScore}`,
       score_differential: Math.abs(homeScore - awayScore)
     },
     sport_specific: {
+      ...sportSpecificBase(),
       phase:
         elapsedMinutes >= 45 ? "open_second_half" : "controlled_first_half",
       stoppage_time_minutes: elapsedMinutes >= 88 ? 4 : 0,
-      pressure_side: seed.momentumParticipantId
+      pressure_side: seed.momentumParticipantId,
+      attacking_side: seed.momentumParticipantId
     },
     current_possession_or_control: {
       participant_id: seed.momentumParticipantId,
@@ -261,7 +314,7 @@ const buildSoccerState = (
     },
     last_major_event: {
       event_id: `${seed.identity.match_id}-evt-${minuteOffset}`,
-      event_type: "score",
+      event_type: "goal",
       participant_id: leader,
       player_id: `${leader}-scorer`,
       description: isLevel
@@ -309,26 +362,14 @@ const buildSoccerState = (
       reason_codes: ["territory_gain", "shot_volume_increase"]
     },
     live_predictions: {
-      win_probabilities: [
-        {
-          participant_id: seed.identity.participants[0].participant_id,
-          probability: isLevel ? 0.39 : homeScore > awayScore ? 0.6 : 0.28
-        },
-        {
-          participant_id: seed.identity.participants[1].participant_id,
-          probability: isLevel ? 0.39 : awayScore > homeScore ? 0.6 : 0.28
-        }
-      ],
-      win_probability_changes: [
-        {
-          participant_id: seed.identity.participants[0].participant_id,
-          last_interval: isLevel ? 0.02 : homeScore > awayScore ? 0.08 : -0.08
-        },
-        {
-          participant_id: seed.identity.participants[1].participant_id,
-          last_interval: isLevel ? -0.02 : awayScore > homeScore ? 0.08 : -0.08
-        }
-      ],
+      win_probabilities: buildWinProbabilities(
+        seed,
+        isLevel ? 0.39 : homeScore > awayScore ? 0.6 : 0.28
+      ),
+      win_probability_changes: buildWinProbabilityChanges(
+        seed,
+        isLevel ? 0.02 : homeScore > awayScore ? 0.08 : -0.08
+      ),
       comeback_probability: isLevel
         ? 0.5
         : leader === seed.identity.participants[0].participant_id
@@ -336,14 +377,14 @@ const buildSoccerState = (
           : 0.46,
       upset_probability: 0.24,
       draw_probability: isLevel ? 0.27 : 0.16,
-      overtime_or_tiebreak_probability: 0.0,
+      overtime_or_tiebreak_probability: 0,
       likely_next_major_event: "shot_on_target",
       expected_remaining_duration_minutes: Math.max(1, 90 - elapsedMinutes),
       prediction_confidence: 0.77
     },
     summary: {
       headline: isLevel
-        ? "The MLS match remains in the balance late on"
+        ? "The match remains in the balance late on"
         : "The lead is narrow with time still to play",
       short_byte: `${seed.identity.participants[0].name} ${homeScore}, ${seed.identity.participants[1].name} ${awayScore} in the ${elapsedMinutes}th minute.`,
       key_points: [
@@ -365,17 +406,916 @@ const buildSoccerState = (
   };
 };
 
+const buildFootballState = (
+  seed: MatchSeed,
+  minuteOffset: number,
+  homeScore: number,
+  awayScore: number
+): LiveState => {
+  const quarter = minuteOffset >= 6 ? 4 : 3;
+  const quarterRemaining = Math.max(18, 900 - minuteOffset * 95);
+  const leader = leadingParticipantId(seed, homeScore, awayScore);
+  const possessionTeam =
+    minuteOffset % 2 === 0
+      ? seed.identity.participants[0].participant_id
+      : seed.identity.participants[1].participant_id;
+
+  return {
+    match_id: seed.identity.match_id,
+    match_status: "live",
+    period: {
+      code: quarter === 4 ? "fourth_quarter" : "third_quarter",
+      display: quarter === 4 ? "4th Quarter" : "3rd Quarter"
+    },
+    clock: {
+      display: `${String(Math.floor(quarterRemaining / 60)).padStart(2, "0")}:${String(
+        quarterRemaining % 60
+      ).padStart(2, "0")}`,
+      elapsed_seconds: 3600 - quarterRemaining,
+      remaining_seconds: quarterRemaining
+    },
+    score: {
+      participant_scores: buildParticipantScores(seed, homeScore, awayScore),
+      display: `${homeScore}-${awayScore}`,
+      score_differential: Math.abs(homeScore - awayScore)
+    },
+    sport_specific: {
+      ...sportSpecificBase(),
+      possession_team: possessionTeam,
+      down: (minuteOffset % 4) + 1,
+      distance_yards: 3 + (minuteOffset % 8),
+      yard_line: `${28 + minuteOffset * 4}`,
+      red_zone: quarterRemaining < 220,
+      pressure_side: possessionTeam
+    },
+    current_possession_or_control: {
+      participant_id: possessionTeam,
+      description: `${seed.identity.participants.find((participant) => participant.participant_id === possessionTeam)?.name} has the ball with the drive still alive`
+    },
+    what_is_happening: {
+      headline: "A one-possession NFL finish is developing",
+      summary:
+        "Field position and timeout leverage are starting to dominate every snap.",
+      situation_code: "one_possession_game",
+      key_entity_ids: seed.identity.participants.map(
+        (participant: Participant) => participant.participant_id
+      )
+    },
+    last_major_event: {
+      event_id: `${seed.identity.match_id}-evt-${minuteOffset}`,
+      event_type: "explosive_play",
+      participant_id: leader,
+      player_id: `${leader}-skill-player`,
+      description: "A chunk gain moved the offense into scoring range",
+      match_time: `${Math.floor(quarterRemaining / 60)}:${String(
+        quarterRemaining % 60
+      ).padStart(2, "0")}`,
+      event_importance: 86
+    },
+    recent_events: [
+      {
+        description: "A third-down conversion extended the drive",
+        match_time: "06:42"
+      }
+    ],
+    special_state: {
+      is_timeout: minuteOffset % 3 === 0,
+      is_under_review: false,
+      is_injury_delay: false,
+      is_weather_delay: false,
+      is_overtime_or_tiebreak: false
+    },
+    excitement: {
+      aggregate_score: 88,
+      level: "high",
+      current_excitement: 89,
+      recent_excitement: 84,
+      expected_remaining_excitement: 91,
+      reason_codes: ["one_score_margin", "late_drive", "red_zone_access"]
+    },
+    criticality: {
+      score: 87,
+      level: "high",
+      reason_codes: ["late_game", "timeout_leverage", "field_position"]
+    },
+    competitive_balance: {
+      score: 85,
+      level: "close"
+    },
+    momentum: {
+      leading_participant_id: possessionTeam,
+      score: 74,
+      direction: "increasing",
+      summary: "The current drive is putting sustained stress on the defense",
+      reason_codes: ["successful_early_downs", "field_position_gain"]
+    },
+    live_predictions: {
+      win_probabilities: buildWinProbabilities(
+        seed,
+        homeScore >= awayScore ? 0.58 : 0.42
+      ),
+      win_probability_changes: buildWinProbabilityChanges(
+        seed,
+        possessionTeam === seed.identity.participants[0].participant_id
+          ? 0.05
+          : -0.05
+      ),
+      comeback_probability: 0.34,
+      upset_probability: 0.29,
+      draw_probability: 0,
+      overtime_or_tiebreak_probability: 0.16,
+      likely_next_major_event: "red_zone_play",
+      expected_remaining_duration_minutes: Math.max(
+        2,
+        Math.round(quarterRemaining / 60)
+      ),
+      prediction_confidence: 0.78
+    },
+    summary: {
+      headline: "The game is riding on the current possession",
+      short_byte: `${seed.identity.participants[0].name} ${homeScore}, ${seed.identity.participants[1].name} ${awayScore}.`,
+      key_points: [
+        "A single drive can flip the result",
+        "Timeout leverage matters now",
+        "Field position is sharply tilting the phase"
+      ]
+    },
+    freshness: {
+      generated_at: nowIso(),
+      source_observation_time: null,
+      age_seconds: 0
+    },
+    verification: {
+      status: "verified",
+      confidence: 0.8,
+      warnings: []
+    }
+  };
+};
+
+const buildBaseballState = (
+  seed: MatchSeed,
+  minuteOffset: number,
+  homeScore: number,
+  awayScore: number
+): LiveState => {
+  const inning = 7 + (minuteOffset % 2);
+  const half = minuteOffset % 2 === 0 ? "top" : "bottom";
+  const battingSide =
+    half === "top"
+      ? seed.identity.participants[1].participant_id
+      : seed.identity.participants[0].participant_id;
+
+  return {
+    match_id: seed.identity.match_id,
+    match_status: "live",
+    period: {
+      code: `${half}_${inning}`,
+      display: `${half === "top" ? "Top" : "Bottom"} ${inning}th`
+    },
+    clock: {
+      display: `${half === "top" ? "Top" : "Bot"} ${inning}`,
+      elapsed_seconds: inning * 600,
+      remaining_seconds: Math.max(300, (9 - inning) * 600)
+    },
+    score: {
+      participant_scores: buildParticipantScores(seed, homeScore, awayScore),
+      display: `${homeScore}-${awayScore}`,
+      score_differential: Math.abs(homeScore - awayScore)
+    },
+    sport_specific: {
+      ...sportSpecificBase(),
+      inning,
+      innings_half: half,
+      outs: minuteOffset % 3,
+      balls: 2,
+      strikes: 1,
+      runners_on_base: minuteOffset % 2 === 0 ? ["first", "third"] : ["second"],
+      possession_team: battingSide,
+      attacking_side: battingSide
+    },
+    current_possession_or_control: {
+      participant_id: battingSide,
+      description: `${seed.identity.participants.find((participant) => participant.participant_id === battingSide)?.name} is at the plate with traffic on the bases`
+    },
+    what_is_happening: {
+      headline: "A late-inning scoring chance is building",
+      summary:
+        "Every pitch now has leverage because base traffic can break the deadlock or extend the margin.",
+      situation_code: "late_inning_pressure",
+      key_entity_ids: seed.identity.participants.map(
+        (participant: Participant) => participant.participant_id
+      )
+    },
+    last_major_event: {
+      event_id: `${seed.identity.match_id}-evt-${minuteOffset}`,
+      event_type: "extra_base_hit",
+      participant_id: battingSide,
+      player_id: `${battingSide}-batter`,
+      description: "A gap shot created immediate scoring pressure",
+      match_time: `${half} ${inning}`,
+      event_importance: 82
+    },
+    recent_events: [
+      {
+        description: "A patient at-bat pushed the starter out of rhythm",
+        match_time: `${half} ${inning - 1}`
+      }
+    ],
+    special_state: {
+      is_timeout: false,
+      is_under_review: minuteOffset % 5 === 0,
+      is_injury_delay: false,
+      is_weather_delay: false,
+      is_overtime_or_tiebreak: inning >= 9 && homeScore === awayScore
+    },
+    excitement: {
+      aggregate_score: 81,
+      level: "high",
+      current_excitement: 83,
+      recent_excitement: 78,
+      expected_remaining_excitement: 82,
+      reason_codes: ["runners_in_scoring_position", "late_innings"]
+    },
+    criticality: {
+      score: 79,
+      level: "high",
+      reason_codes: ["late_innings", "bullpen_pressure"]
+    },
+    competitive_balance: {
+      score: 84,
+      level: "close"
+    },
+    momentum: {
+      leading_participant_id: battingSide,
+      score: 69,
+      direction: "increasing",
+      summary: "The batting side has stacked hard contact and baserunners",
+      reason_codes: ["hard_contact", "runners_on_base"]
+    },
+    live_predictions: {
+      win_probabilities: buildWinProbabilities(
+        seed,
+        homeScore >= awayScore ? 0.55 : 0.45
+      ),
+      win_probability_changes: buildWinProbabilityChanges(
+        seed,
+        battingSide === seed.identity.participants[0].participant_id
+          ? 0.04
+          : -0.04
+      ),
+      comeback_probability: 0.3,
+      upset_probability: 0.27,
+      draw_probability: 0,
+      overtime_or_tiebreak_probability: 0.11,
+      likely_next_major_event: "run_scoring_hit",
+      expected_remaining_duration_minutes: 28,
+      prediction_confidence: 0.75
+    },
+    summary: {
+      headline: "Late innings are amplifying every baserunner",
+      short_byte: `${seed.identity.participants[0].name} ${homeScore}, ${seed.identity.participants[1].name} ${awayScore}.`,
+      key_points: [
+        "Baserunners are shaping the inning",
+        "Bullpen execution is under pressure",
+        "One clean swing could decide the phase"
+      ]
+    },
+    freshness: {
+      generated_at: nowIso(),
+      source_observation_time: null,
+      age_seconds: 0
+    },
+    verification: {
+      status: "verified",
+      confidence: 0.77,
+      warnings: []
+    }
+  };
+};
+
+const buildCricketState = (
+  seed: MatchSeed,
+  minuteOffset: number,
+  homeScore: number,
+  awayScore: number
+): LiveState => {
+  const battingSide =
+    minuteOffset % 2 === 0
+      ? seed.identity.participants[0].participant_id
+      : seed.identity.participants[1].participant_id;
+  const over = 15.2 + minuteOffset * 0.2;
+  const wickets = 4 + (minuteOffset % 3);
+
+  return {
+    match_id: seed.identity.match_id,
+    match_status: "live",
+    period: {
+      code: "middle_overs",
+      display: `Over ${over.toFixed(1)}`
+    },
+    clock: {
+      display: `${over.toFixed(1)} ov`,
+      elapsed_seconds: Math.round(over * 240),
+      remaining_seconds: Math.max(240, Math.round((20 - over) * 240))
+    },
+    score: {
+      participant_scores: buildParticipantScores(seed, homeScore, awayScore),
+      display: `${homeScore}-${awayScore}`,
+      score_differential: Math.abs(homeScore - awayScore)
+    },
+    sport_specific: {
+      ...sportSpecificBase(),
+      over,
+      wickets,
+      run_rate: 8.2 + minuteOffset * 0.1,
+      target_runs: 176,
+      power_play: over < 6,
+      possession_team: battingSide,
+      attacking_side: battingSide
+    },
+    current_possession_or_control: {
+      participant_id: battingSide,
+      description: `${seed.identity.participants.find((participant) => participant.participant_id === battingSide)?.name} is batting with the required tempo still within reach`
+    },
+    what_is_happening: {
+      headline: "The chase rate is putting the middle overs under pressure",
+      summary:
+        "Strike rotation and boundary access are both starting to matter more than pure wicket preservation.",
+      situation_code: "chase_acceleration",
+      key_entity_ids: seed.identity.participants.map(
+        (participant: Participant) => participant.participant_id
+      )
+    },
+    last_major_event: {
+      event_id: `${seed.identity.match_id}-evt-${minuteOffset}`,
+      event_type: "boundary",
+      participant_id: battingSide,
+      player_id: `${battingSide}-set-batter`,
+      description: "Back-to-back boundaries shifted the required equation",
+      match_time: `${over.toFixed(1)} ov`,
+      event_importance: 81
+    },
+    recent_events: [
+      {
+        description: "A misfield turned a single into three",
+        match_time: `${Math.max(1, over - 0.4).toFixed(1)} ov`
+      }
+    ],
+    special_state: {
+      is_timeout: false,
+      is_under_review: false,
+      is_injury_delay: false,
+      is_weather_delay: false,
+      is_overtime_or_tiebreak: false
+    },
+    excitement: {
+      aggregate_score: 83,
+      level: "high",
+      current_excitement: 84,
+      recent_excitement: 81,
+      expected_remaining_excitement: 88,
+      reason_codes: ["required_run_rate", "set_batter", "death_overs_ahead"]
+    },
+    criticality: {
+      score: 82,
+      level: "high",
+      reason_codes: ["required_rate", "wickets_in_hand"]
+    },
+    competitive_balance: {
+      score: 80,
+      level: "close"
+    },
+    momentum: {
+      leading_participant_id: battingSide,
+      score: 73,
+      direction: "increasing",
+      summary: "The batting side has found a brief scoring surge",
+      reason_codes: ["boundary_cluster", "strike_rotation"]
+    },
+    live_predictions: {
+      win_probabilities: buildWinProbabilities(
+        seed,
+        battingSide === seed.identity.participants[0].participant_id
+          ? 0.54
+          : 0.46
+      ),
+      win_probability_changes: buildWinProbabilityChanges(
+        seed,
+        battingSide === seed.identity.participants[0].participant_id
+          ? 0.05
+          : -0.05
+      ),
+      comeback_probability: 0.36,
+      upset_probability: 0.26,
+      draw_probability: 0,
+      overtime_or_tiebreak_probability: 0,
+      likely_next_major_event: "boundary_or_wicket",
+      expected_remaining_duration_minutes: 22,
+      prediction_confidence: 0.74
+    },
+    summary: {
+      headline: "The chase still turns on boundary access and wickets",
+      short_byte: `${seed.identity.participants[0].name} ${homeScore}, ${seed.identity.participants[1].name} ${awayScore}.`,
+      key_points: [
+        "Run rate pressure is active",
+        "Wickets in hand still matter",
+        "A single over can reshape the chase"
+      ]
+    },
+    freshness: {
+      generated_at: nowIso(),
+      source_observation_time: null,
+      age_seconds: 0
+    },
+    verification: {
+      status: "verified",
+      confidence: 0.76,
+      warnings: []
+    }
+  };
+};
+
+const buildHockeyState = (
+  seed: MatchSeed,
+  minuteOffset: number,
+  homeScore: number,
+  awayScore: number
+): LiveState => {
+  const periodNumber = minuteOffset >= 6 ? 3 : 2;
+  const remainingSeconds = Math.max(45, 1200 - minuteOffset * 120);
+  const leader = leadingParticipantId(seed, homeScore, awayScore);
+
+  return {
+    match_id: seed.identity.match_id,
+    match_status: "live",
+    period: {
+      code: periodNumber === 3 ? "third_period" : "second_period",
+      display: periodNumber === 3 ? "3rd Period" : "2nd Period"
+    },
+    clock: {
+      display: `${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(
+        remainingSeconds % 60
+      ).padStart(2, "0")}`,
+      elapsed_seconds: periodNumber * 1200 - remainingSeconds,
+      remaining_seconds: remainingSeconds
+    },
+    score: {
+      participant_scores: buildParticipantScores(seed, homeScore, awayScore),
+      display: `${homeScore}-${awayScore}`,
+      score_differential: Math.abs(homeScore - awayScore)
+    },
+    sport_specific: {
+      ...sportSpecificBase(),
+      period_number: periodNumber,
+      phase:
+        remainingSeconds < 180 ? "net_empty_watch" : "offensive_zone_cycle",
+      pressure_side: seed.momentumParticipantId,
+      attacking_side: seed.momentumParticipantId,
+      pulled_goalie: remainingSeconds < 120 && homeScore < awayScore
+    },
+    current_possession_or_control: {
+      participant_id: seed.momentumParticipantId,
+      description:
+        "One side is sustaining offensive-zone time and forcing repeated resets"
+    },
+    what_is_happening: {
+      headline: "Sustained zone pressure is stretching the defensive structure",
+      summary:
+        "The shot volume is rising and line changes are becoming harder for the defending side.",
+      situation_code: "zone_pressure",
+      key_entity_ids: seed.identity.participants.map(
+        (participant: Participant) => participant.participant_id
+      )
+    },
+    last_major_event: {
+      event_id: `${seed.identity.match_id}-evt-${minuteOffset}`,
+      event_type: "high_danger_chance",
+      participant_id: leader,
+      player_id: `${leader}-forward`,
+      description: "A rebound sequence nearly broke the shape of the period",
+      match_time: `${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(
+        remainingSeconds % 60
+      ).padStart(2, "0")}`,
+      event_importance: 80
+    },
+    recent_events: [
+      {
+        description: "A point shot created a heavy-screen second chance",
+        match_time: "07:41"
+      }
+    ],
+    special_state: {
+      is_timeout: false,
+      is_under_review: minuteOffset % 4 === 0,
+      is_injury_delay: false,
+      is_weather_delay: false,
+      is_overtime_or_tiebreak: false
+    },
+    excitement: {
+      aggregate_score: 82,
+      level: "high",
+      current_excitement: 83,
+      recent_excitement: 79,
+      expected_remaining_excitement: 86,
+      reason_codes: ["one_goal_margin", "sustained_pressure"]
+    },
+    criticality: {
+      score: 81,
+      level: "high",
+      reason_codes: ["one_goal_margin", "third_period"]
+    },
+    competitive_balance: {
+      score: 87,
+      level: "close"
+    },
+    momentum: {
+      leading_participant_id: seed.momentumParticipantId,
+      score: 72,
+      direction: "increasing",
+      summary: "Zone time and shot pressure are tilting the ice",
+      reason_codes: ["forecheck", "rebound_control"]
+    },
+    live_predictions: {
+      win_probabilities: buildWinProbabilities(
+        seed,
+        homeScore >= awayScore ? 0.56 : 0.44
+      ),
+      win_probability_changes: buildWinProbabilityChanges(seed, 0.04),
+      comeback_probability: 0.31,
+      upset_probability: 0.23,
+      draw_probability: 0,
+      overtime_or_tiebreak_probability:
+        Math.abs(homeScore - awayScore) <= 1 ? 0.22 : 0.09,
+      likely_next_major_event: "high_danger_chance",
+      expected_remaining_duration_minutes: Math.max(
+        2,
+        Math.round(remainingSeconds / 60)
+      ),
+      prediction_confidence: 0.76
+    },
+    summary: {
+      headline: "The next shift could decide the period",
+      short_byte: `${seed.identity.participants[0].name} ${homeScore}, ${seed.identity.participants[1].name} ${awayScore}.`,
+      key_points: [
+        "Zone time is becoming decisive",
+        "The margin is still within one sequence",
+        "Goalie pressure is increasing"
+      ]
+    },
+    freshness: {
+      generated_at: nowIso(),
+      source_observation_time: null,
+      age_seconds: 0
+    },
+    verification: {
+      status: "verified",
+      confidence: 0.78,
+      warnings: []
+    }
+  };
+};
+
+const buildTennisState = (
+  seed: MatchSeed,
+  minuteOffset: number,
+  homeScore: number,
+  awayScore: number
+): LiveState => {
+  const currentSet = minuteOffset >= 6 ? 3 : 2;
+  const serveSide =
+    minuteOffset % 2 === 0
+      ? seed.identity.participants[0].participant_id
+      : seed.identity.participants[1].participant_id;
+
+  return {
+    match_id: seed.identity.match_id,
+    match_status: "live",
+    period: {
+      code: `set_${currentSet}`,
+      display: `Set ${currentSet}`
+    },
+    clock: {
+      display: `${homeScore}-${awayScore}`,
+      elapsed_seconds: currentSet * 1800,
+      remaining_seconds: 900
+    },
+    score: {
+      participant_scores: buildParticipantScores(seed, homeScore, awayScore),
+      display: `${homeScore}-${awayScore}`,
+      score_differential: Math.abs(homeScore - awayScore)
+    },
+    sport_specific: {
+      ...sportSpecificBase(),
+      current_set: currentSet,
+      set_score: currentSet === 3 ? "6-4, 3-6" : "6-4",
+      serve_side: serveSide,
+      break_point_pressure: minuteOffset % 3 === 0,
+      attacking_side: serveSide
+    },
+    current_possession_or_control: {
+      participant_id: serveSide,
+      description: `${seed.identity.participants.find((participant) => participant.participant_id === serveSide)?.name} is serving in a pressure game`
+    },
+    what_is_happening: {
+      headline: "A high-leverage service game is shaping the set",
+      summary:
+        "The current rally pattern is testing whether the server can hold under direct scoreboard pressure.",
+      situation_code: "break_point_game",
+      key_entity_ids: seed.identity.participants.map(
+        (participant: Participant) => participant.participant_id
+      )
+    },
+    last_major_event: {
+      event_id: `${seed.identity.match_id}-evt-${minuteOffset}`,
+      event_type: "break_point_saved",
+      participant_id: serveSide,
+      player_id: serveSide,
+      description: "A big first serve erased immediate break pressure",
+      match_time: `Set ${currentSet}`,
+      event_importance: 84
+    },
+    recent_events: [
+      {
+        description: "A long rally tilted the baseline exchange",
+        match_time: `Set ${currentSet}`
+      }
+    ],
+    special_state: {
+      is_timeout: false,
+      is_under_review: false,
+      is_injury_delay: false,
+      is_weather_delay: false,
+      is_overtime_or_tiebreak: currentSet === 3 && homeScore === awayScore
+    },
+    excitement: {
+      aggregate_score: 79,
+      level: "high",
+      current_excitement: 82,
+      recent_excitement: 77,
+      expected_remaining_excitement: 85,
+      reason_codes: ["break_pressure", "deciding_set"]
+    },
+    criticality: {
+      score: 83,
+      level: "high",
+      reason_codes: ["service_game", "set_leverage"]
+    },
+    competitive_balance: {
+      score: 89,
+      level: "very_close"
+    },
+    momentum: {
+      leading_participant_id: serveSide,
+      score: 68,
+      direction: "volatile",
+      summary: "Each service point is causing sharp swings in leverage",
+      reason_codes: ["break_points", "long_rallies"]
+    },
+    live_predictions: {
+      win_probabilities: buildWinProbabilities(seed, 0.51),
+      win_probability_changes: buildWinProbabilityChanges(seed, 0.03),
+      comeback_probability: 0.37,
+      upset_probability: 0.21,
+      draw_probability: 0,
+      overtime_or_tiebreak_probability: 0.19,
+      likely_next_major_event: "break_point",
+      expected_remaining_duration_minutes: 18,
+      prediction_confidence: 0.72
+    },
+    summary: {
+      headline: "The next service game could decide the set",
+      short_byte: `${seed.identity.participants[0].name} ${homeScore}, ${seed.identity.participants[1].name} ${awayScore}.`,
+      key_points: [
+        "Service pressure is high",
+        "Break points are near the surface",
+        "Rally tolerance is shaping the edge"
+      ]
+    },
+    freshness: {
+      generated_at: nowIso(),
+      source_observation_time: null,
+      age_seconds: 0
+    },
+    verification: {
+      status: "verified",
+      confidence: 0.74,
+      warnings: []
+    }
+  };
+};
+
+const buildMmaState = (
+  seed: MatchSeed,
+  minuteOffset: number,
+  homeScore: number,
+  awayScore: number
+): LiveState => {
+  const round = minuteOffset >= 6 ? 4 : 3;
+  const roundRemaining = Math.max(20, 300 - minuteOffset * 20);
+  const aggressor =
+    minuteOffset % 2 === 0
+      ? seed.identity.participants[0].participant_id
+      : seed.identity.participants[1].participant_id;
+
+  return {
+    match_id: seed.identity.match_id,
+    match_status: "live",
+    period: {
+      code: `round_${round}`,
+      display: `Round ${round}`
+    },
+    clock: {
+      display: `${String(Math.floor(roundRemaining / 60)).padStart(1, "0")}:${String(
+        roundRemaining % 60
+      ).padStart(2, "0")}`,
+      elapsed_seconds: round * 300 - roundRemaining,
+      remaining_seconds: roundRemaining
+    },
+    score: {
+      participant_scores: buildParticipantScores(seed, homeScore, awayScore),
+      display: `${homeScore}-${awayScore}`,
+      score_differential: Math.abs(homeScore - awayScore)
+    },
+    sport_specific: {
+      ...sportSpecificBase(),
+      round,
+      control_time_seconds: 48 + minuteOffset * 6,
+      finish_threat:
+        aggressor === seed.identity.participants[0].participant_id
+          ? "home_pressure"
+          : "away_pressure",
+      attacking_side: aggressor
+    },
+    current_possession_or_control: {
+      participant_id: aggressor,
+      description: `${seed.identity.participants.find((participant) => participant.participant_id === aggressor)?.name} is forcing the higher-pressure exchanges`
+    },
+    what_is_happening: {
+      headline: "The pace is stretching toward a potential finish window",
+      summary:
+        "Control time and cage pressure are starting to separate the round even if the fight remains competitive.",
+      situation_code: "finish_window",
+      key_entity_ids: seed.identity.participants.map(
+        (participant: Participant) => participant.participant_id
+      )
+    },
+    last_major_event: {
+      event_id: `${seed.identity.match_id}-evt-${minuteOffset}`,
+      event_type: "clean_combination",
+      participant_id: aggressor,
+      player_id: aggressor,
+      description: "A clean combination forced a reset against the fence",
+      match_time: `R${round} ${String(Math.floor(roundRemaining / 60))}:${String(
+        roundRemaining % 60
+      ).padStart(2, "0")}`,
+      event_importance: 80
+    },
+    recent_events: [
+      {
+        description: "A scramble ended with top control for the aggressor",
+        match_time: `R${round}`
+      }
+    ],
+    special_state: {
+      is_timeout: false,
+      is_under_review: false,
+      is_injury_delay: false,
+      is_weather_delay: false,
+      is_overtime_or_tiebreak: false
+    },
+    excitement: {
+      aggregate_score: 78,
+      level: "high",
+      current_excitement: 81,
+      recent_excitement: 76,
+      expected_remaining_excitement: 83,
+      reason_codes: ["finish_threat", "scramble_pace"]
+    },
+    criticality: {
+      score: 77,
+      level: "high",
+      reason_codes: ["late_round", "damage_accumulation"]
+    },
+    competitive_balance: {
+      score: 74,
+      level: "competitive"
+    },
+    momentum: {
+      leading_participant_id: aggressor,
+      score: 67,
+      direction: "increasing",
+      summary:
+        "Forward pressure and top control are shaping the optics of the round",
+      reason_codes: ["cage_pressure", "control_time"]
+    },
+    live_predictions: {
+      win_probabilities: buildWinProbabilities(
+        seed,
+        aggressor === seed.identity.participants[0].participant_id ? 0.57 : 0.43
+      ),
+      win_probability_changes: buildWinProbabilityChanges(
+        seed,
+        aggressor === seed.identity.participants[0].participant_id
+          ? 0.04
+          : -0.04
+      ),
+      comeback_probability: 0.35,
+      upset_probability: 0.22,
+      draw_probability: 0.02,
+      overtime_or_tiebreak_probability: 0,
+      likely_next_major_event: "clean_entry_or_takedown",
+      expected_remaining_duration_minutes: Math.max(
+        1,
+        Math.round(roundRemaining / 60)
+      ),
+      prediction_confidence: 0.73
+    },
+    summary: {
+      headline: "The fight is still open but the pressure edge is visible",
+      short_byte: `${seed.identity.participants[0].name} ${homeScore}, ${seed.identity.participants[1].name} ${awayScore} on the running scorecards.`,
+      key_points: [
+        "Control time is accumulating",
+        "Damage optics still matter",
+        "A finish threat remains live"
+      ]
+    },
+    freshness: {
+      generated_at: nowIso(),
+      source_observation_time: null,
+      age_seconds: 0
+    },
+    verification: {
+      status: "verified",
+      confidence: 0.73,
+      warnings: []
+    }
+  };
+};
+
 const buildState = (seed: MatchSeed, minuteOffset: number): LiveState => {
   const [homeBase, awayBase] = seed.scoreSeed;
-  if (seed.identity.sport === "soccer") {
-    const homeScore = homeBase + (minuteOffset % 2);
-    const awayScore = awayBase + ((minuteOffset + 1) % 2);
-    return buildSoccerState(seed, minuteOffset, homeScore, awayScore);
-  }
 
-  const homeScore = homeBase + (minuteOffset % 7);
-  const awayScore = awayBase + ((minuteOffset + 2) % 7);
-  return buildBasketballState(seed, minuteOffset, homeScore, awayScore);
+  switch (seed.identity.sport) {
+    case "soccer":
+      return buildSoccerState(
+        seed,
+        minuteOffset,
+        homeBase + (minuteOffset % 2),
+        awayBase + ((minuteOffset + 1) % 2)
+      );
+    case "basketball":
+      return buildBasketballState(
+        seed,
+        minuteOffset,
+        homeBase + (minuteOffset % 7),
+        awayBase + ((minuteOffset + 2) % 7)
+      );
+    case "american-football":
+      return buildFootballState(
+        seed,
+        minuteOffset,
+        homeBase + (minuteOffset % 2) * 3,
+        awayBase + ((minuteOffset + 1) % 2) * 3
+      );
+    case "baseball":
+      return buildBaseballState(
+        seed,
+        minuteOffset,
+        homeBase + (minuteOffset % 2),
+        awayBase + ((minuteOffset + 1) % 2)
+      );
+    case "cricket":
+      return buildCricketState(
+        seed,
+        minuteOffset,
+        homeBase + minuteOffset * 2,
+        awayBase
+      );
+    case "hockey":
+      return buildHockeyState(
+        seed,
+        minuteOffset,
+        homeBase + (minuteOffset % 2),
+        awayBase + ((minuteOffset + 1) % 2)
+      );
+    case "tennis":
+      return buildTennisState(
+        seed,
+        minuteOffset,
+        3 + (minuteOffset % 4),
+        2 + ((minuteOffset + 1) % 4)
+      );
+    case "mma":
+      return buildMmaState(
+        seed,
+        minuteOffset,
+        29 + (minuteOffset % 2),
+        28 + ((minuteOffset + 1) % 2)
+      );
+    default:
+      return buildSoccerState(seed, minuteOffset, homeBase, awayBase);
+  }
 };
 
 const seeds: MatchSeed[] = [
@@ -387,11 +1327,7 @@ const seeds: MatchSeed[] = [
       tournament_name: "NBA",
       scheduled_start_time: "2026-06-16T19:00:00.000Z",
       participants: [
-        {
-          participant_id: "bos",
-          name: "Boston Celtics",
-          short_name: "BOS"
-        },
+        { participant_id: "bos", name: "Boston Celtics", short_name: "BOS" },
         {
           participant_id: "gsw",
           name: "Golden State Warriors",
@@ -454,16 +1390,8 @@ const seeds: MatchSeed[] = [
       tournament_name: "MLS",
       scheduled_start_time: "2026-06-16T20:15:00.000Z",
       participants: [
-        {
-          participant_id: "lafc",
-          name: "LAFC",
-          short_name: "LAFC"
-        },
-        {
-          participant_id: "sea",
-          name: "Seattle Sounders",
-          short_name: "SEA"
-        }
+        { participant_id: "lafc", name: "LAFC", short_name: "LAFC" },
+        { participant_id: "sea", name: "Seattle Sounders", short_name: "SEA" }
       ]
     },
     context: {
@@ -514,6 +1442,264 @@ const seeds: MatchSeed[] = [
     momentumParticipantId: "lafc"
   },
   {
+    region: "north-america",
+    identity: {
+      match_id: "american-football:nfl:2026-06-16:kc:buf",
+      sport: "american-football",
+      tournament_name: "NFL",
+      scheduled_start_time: "2026-06-16T18:25:00.000Z",
+      participants: [
+        {
+          participant_id: "kc",
+          name: "Kansas City Chiefs",
+          short_name: "KC"
+        },
+        {
+          participant_id: "buf",
+          name: "Buffalo Bills",
+          short_name: "BUF"
+        }
+      ]
+    },
+    context: {
+      match: {
+        match_id: "american-football:nfl:2026-06-16:kc:buf",
+        match_name: "Kansas City Chiefs vs Buffalo Bills",
+        sport: "american-football",
+        tournament_name: "NFL",
+        tournament_stage: "Regular Season",
+        scheduled_start_time: "2026-06-16T18:25:00.000Z",
+        venue: {
+          stadium: "Arrowhead Stadium",
+          city: "Kansas City",
+          state: "Missouri",
+          country: "United States"
+        }
+      },
+      participants: [
+        {
+          participant_id: "kc",
+          name: "Kansas City Chiefs",
+          short_name: "KC",
+          role: "home",
+          ranking: "1",
+          recent_form: ["W", "W", "W", "L", "W"]
+        },
+        {
+          participant_id: "buf",
+          name: "Buffalo Bills",
+          short_name: "BUF",
+          role: "away",
+          ranking: "3",
+          recent_form: ["W", "L", "W", "W", "W"]
+        }
+      ],
+      pre_match_intelligence: {
+        headline:
+          "Quarterback efficiency and red-zone execution drive the edge",
+        summary:
+          "Both offenses can score quickly, but a late red-zone series could define the result.",
+        expected_competitiveness: 88,
+        key_matchup: "Chiefs route adjustments against Bills disguise coverages"
+      },
+      context_version: 1,
+      context_fingerprint: "ctx_kc_buf_v1",
+      context_generated_at: "2026-06-16T17:45:00.000Z"
+    },
+    scoreSeed: [24, 20],
+    momentumParticipantId: "kc"
+  },
+  {
+    region: "north-america",
+    identity: {
+      match_id: "baseball:mlb:2026-06-16:nyy:lad",
+      sport: "baseball",
+      tournament_name: "MLB",
+      scheduled_start_time: "2026-06-16T17:10:00.000Z",
+      participants: [
+        { participant_id: "nyy", name: "New York Yankees", short_name: "NYY" },
+        {
+          participant_id: "lad",
+          name: "Los Angeles Dodgers",
+          short_name: "LAD"
+        }
+      ]
+    },
+    context: {
+      match: {
+        match_id: "baseball:mlb:2026-06-16:nyy:lad",
+        match_name: "New York Yankees vs Los Angeles Dodgers",
+        sport: "baseball",
+        tournament_name: "MLB",
+        tournament_stage: "Regular Season",
+        scheduled_start_time: "2026-06-16T17:10:00.000Z",
+        venue: {
+          stadium: "Yankee Stadium",
+          city: "New York",
+          state: "New York",
+          country: "United States"
+        }
+      },
+      participants: [
+        {
+          participant_id: "nyy",
+          name: "New York Yankees",
+          short_name: "NYY",
+          role: "home",
+          ranking: "2",
+          recent_form: ["W", "W", "L", "W", "D"]
+        },
+        {
+          participant_id: "lad",
+          name: "Los Angeles Dodgers",
+          short_name: "LAD",
+          role: "away",
+          ranking: "1",
+          recent_form: ["W", "W", "W", "L", "W"]
+        }
+      ],
+      pre_match_intelligence: {
+        headline: "Lineup depth versus contact management",
+        summary:
+          "Both offenses can punish mistakes, but bullpen sequencing may matter more late.",
+        expected_competitiveness: 82,
+        key_matchup: "Yankees right-handed power against Dodgers late relievers"
+      },
+      context_version: 1,
+      context_fingerprint: "ctx_nyy_lad_v1",
+      context_generated_at: "2026-06-16T16:35:00.000Z"
+    },
+    scoreSeed: [4, 3],
+    momentumParticipantId: "lad"
+  },
+  {
+    region: "north-america",
+    identity: {
+      match_id: "hockey:nhl:2026-06-16:nyr:edm",
+      sport: "hockey",
+      tournament_name: "NHL",
+      scheduled_start_time: "2026-06-16T18:40:00.000Z",
+      participants: [
+        { participant_id: "nyr", name: "New York Rangers", short_name: "NYR" },
+        { participant_id: "edm", name: "Edmonton Oilers", short_name: "EDM" }
+      ]
+    },
+    context: {
+      match: {
+        match_id: "hockey:nhl:2026-06-16:nyr:edm",
+        match_name: "New York Rangers vs Edmonton Oilers",
+        sport: "hockey",
+        tournament_name: "NHL",
+        tournament_stage: "Regular Season",
+        scheduled_start_time: "2026-06-16T18:40:00.000Z",
+        venue: {
+          stadium: "Madison Square Garden",
+          city: "New York",
+          state: "New York",
+          country: "United States"
+        }
+      },
+      participants: [
+        {
+          participant_id: "nyr",
+          name: "New York Rangers",
+          short_name: "NYR",
+          role: "home",
+          ranking: "4",
+          recent_form: ["W", "W", "L", "W", "L"]
+        },
+        {
+          participant_id: "edm",
+          name: "Edmonton Oilers",
+          short_name: "EDM",
+          role: "away",
+          ranking: "5",
+          recent_form: ["W", "L", "W", "W", "W"]
+        }
+      ],
+      pre_match_intelligence: {
+        headline: "Transition speed against defensive recovery",
+        summary:
+          "Both teams create dangerous chances off quick shifts in possession, which should keep the pace high.",
+        expected_competitiveness: 80,
+        key_matchup:
+          "Rangers blue-line denial against Oilers controlled entries"
+      },
+      context_version: 1,
+      context_fingerprint: "ctx_nyr_edm_v1",
+      context_generated_at: "2026-06-16T17:50:00.000Z"
+    },
+    scoreSeed: [2, 2],
+    momentumParticipantId: "edm"
+  },
+  {
+    region: "north-america",
+    identity: {
+      match_id: "mma:ufc:2026-06-16:mak:edw",
+      sport: "mma",
+      tournament_name: "UFC",
+      scheduled_start_time: "2026-06-16T21:00:00.000Z",
+      participants: [
+        {
+          participant_id: "mak",
+          name: "Islam Makhachev",
+          short_name: "MAK"
+        },
+        {
+          participant_id: "edw",
+          name: "Leon Edwards",
+          short_name: "EDW"
+        }
+      ]
+    },
+    context: {
+      match: {
+        match_id: "mma:ufc:2026-06-16:mak:edw",
+        match_name: "Islam Makhachev vs Leon Edwards",
+        sport: "mma",
+        tournament_name: "UFC",
+        tournament_stage: "Main Event",
+        scheduled_start_time: "2026-06-16T21:00:00.000Z",
+        venue: {
+          stadium: "T-Mobile Arena",
+          city: "Las Vegas",
+          state: "Nevada",
+          country: "United States"
+        }
+      },
+      participants: [
+        {
+          participant_id: "mak",
+          name: "Islam Makhachev",
+          short_name: "MAK",
+          role: "home",
+          ranking: "1",
+          recent_form: ["W", "W", "W", "W", "W"]
+        },
+        {
+          participant_id: "edw",
+          name: "Leon Edwards",
+          short_name: "EDW",
+          role: "away",
+          ranking: "2",
+          recent_form: ["W", "W", "D", "W", "W"]
+        }
+      ],
+      pre_match_intelligence: {
+        headline: "Control time versus range striking",
+        summary:
+          "The fight projects as tactical until one side can establish repeatable positioning advantages.",
+        expected_competitiveness: 77,
+        key_matchup: "Makhachev entries against Edwards' frame control"
+      },
+      context_version: 1,
+      context_fingerprint: "ctx_mak_edw_v1",
+      context_generated_at: "2026-06-16T20:15:00.000Z"
+    },
+    scoreSeed: [29, 28],
+    momentumParticipantId: "mak"
+  },
+  {
     region: "europe",
     identity: {
       match_id: "soccer:epl:2026-06-16:ars:mci",
@@ -521,16 +1707,8 @@ const seeds: MatchSeed[] = [
       tournament_name: "Premier League",
       scheduled_start_time: "2026-06-16T19:30:00.000Z",
       participants: [
-        {
-          participant_id: "ars",
-          name: "Arsenal",
-          short_name: "ARS"
-        },
-        {
-          participant_id: "mci",
-          name: "Manchester City",
-          short_name: "MCI"
-        }
+        { participant_id: "ars", name: "Arsenal", short_name: "ARS" },
+        { participant_id: "mci", name: "Manchester City", short_name: "MCI" }
       ]
     },
     context: {
@@ -581,6 +1759,66 @@ const seeds: MatchSeed[] = [
     momentumParticipantId: "ars"
   },
   {
+    region: "europe",
+    identity: {
+      match_id: "tennis:atp:2026-06-16:alc:sin",
+      sport: "tennis",
+      tournament_name: "ATP Tour",
+      scheduled_start_time: "2026-06-16T14:00:00.000Z",
+      participants: [
+        { participant_id: "alc", name: "Carlos Alcaraz", short_name: "ALC" },
+        { participant_id: "sin", name: "Jannik Sinner", short_name: "SIN" }
+      ]
+    },
+    context: {
+      match: {
+        match_id: "tennis:atp:2026-06-16:alc:sin",
+        match_name: "Carlos Alcaraz vs Jannik Sinner",
+        sport: "tennis",
+        tournament_name: "ATP Tour",
+        tournament_stage: "Quarterfinal",
+        scheduled_start_time: "2026-06-16T14:00:00.000Z",
+        venue: {
+          stadium: "Centre Court",
+          city: "London",
+          state: "England",
+          country: "United Kingdom"
+        }
+      },
+      participants: [
+        {
+          participant_id: "alc",
+          name: "Carlos Alcaraz",
+          short_name: "ALC",
+          role: "home",
+          ranking: "2",
+          recent_form: ["W", "W", "W", "L", "W"]
+        },
+        {
+          participant_id: "sin",
+          name: "Jannik Sinner",
+          short_name: "SIN",
+          role: "away",
+          ranking: "1",
+          recent_form: ["W", "W", "W", "W", "L"]
+        }
+      ],
+      pre_match_intelligence: {
+        headline: "Baseline pressure versus first-serve insulation",
+        summary:
+          "Both players can take control quickly, which makes service games unusually fragile.",
+        expected_competitiveness: 89,
+        key_matchup:
+          "Alcaraz forehand pressure against Sinner early-strike timing"
+      },
+      context_version: 1,
+      context_fingerprint: "ctx_alc_sin_v1",
+      context_generated_at: "2026-06-16T13:10:00.000Z"
+    },
+    scoreSeed: [4, 3],
+    momentumParticipantId: "alc"
+  },
+  {
     region: "latin-america",
     identity: {
       match_id: "soccer:libertadores:2026-06-16:fla:pal",
@@ -588,16 +1826,8 @@ const seeds: MatchSeed[] = [
       tournament_name: "Copa Libertadores",
       scheduled_start_time: "2026-06-16T23:10:00.000Z",
       participants: [
-        {
-          participant_id: "fla",
-          name: "Flamengo",
-          short_name: "FLA"
-        },
-        {
-          participant_id: "pal",
-          name: "Palmeiras",
-          short_name: "PAL"
-        }
+        { participant_id: "fla", name: "Flamengo", short_name: "FLA" },
+        { participant_id: "pal", name: "Palmeiras", short_name: "PAL" }
       ]
     },
     context: {
@@ -655,16 +1885,8 @@ const seeds: MatchSeed[] = [
       tournament_name: "NBL",
       scheduled_start_time: "2026-06-16T10:00:00.000Z",
       participants: [
-        {
-          participant_id: "syd",
-          name: "Sydney Kings",
-          short_name: "SYD"
-        },
-        {
-          participant_id: "mel",
-          name: "Melbourne United",
-          short_name: "MEL"
-        }
+        { participant_id: "syd", name: "Sydney Kings", short_name: "SYD" },
+        { participant_id: "mel", name: "Melbourne United", short_name: "MEL" }
       ]
     },
     context: {
@@ -714,6 +1936,67 @@ const seeds: MatchSeed[] = [
     },
     scoreSeed: [87, 86],
     momentumParticipantId: "mel"
+  },
+  {
+    region: "asia-pacific",
+    identity: {
+      match_id: "cricket:t20:2026-06-16:ind:aus",
+      sport: "cricket",
+      tournament_name: "T20 International",
+      scheduled_start_time: "2026-06-16T11:30:00.000Z",
+      participants: [
+        { participant_id: "ind", name: "India", short_name: "IND" },
+        { participant_id: "aus", name: "Australia", short_name: "AUS" }
+      ]
+    },
+    context: {
+      match: {
+        match_id: "cricket:t20:2026-06-16:ind:aus",
+        match_name: "India vs Australia",
+        sport: "cricket",
+        tournament_name: "T20 International",
+        tournament_stage: "Series Match",
+        scheduled_start_time: "2026-06-16T11:30:00.000Z",
+        venue: {
+          stadium: "Melbourne Cricket Ground",
+          city: "Melbourne",
+          state: "Victoria",
+          country: "Australia"
+        }
+      },
+      participants: [
+        {
+          participant_id: "ind",
+          name: "India",
+          short_name: "IND",
+          role: "home",
+          ranking: "1",
+          recent_form: ["W", "W", "L", "W", "W"]
+        },
+        {
+          participant_id: "aus",
+          name: "Australia",
+          short_name: "AUS",
+          role: "away",
+          ranking: "2",
+          recent_form: ["W", "W", "W", "L", "W"]
+        }
+      ],
+      pre_match_intelligence: {
+        headline:
+          "Powerplay efficiency and death-overs execution shape the matchup",
+        summary:
+          "The chase profile can swing quickly if boundary frequency changes across the final overs.",
+        expected_competitiveness: 84,
+        key_matchup:
+          "India spin variations against Australia's middle-over hitters"
+      },
+      context_version: 1,
+      context_fingerprint: "ctx_ind_aus_v1",
+      context_generated_at: "2026-06-16T10:50:00.000Z"
+    },
+    scoreSeed: [142, 138],
+    momentumParticipantId: "ind"
   }
 ];
 
@@ -776,14 +2059,8 @@ const upcomingSeeds: UpcomingSeed[] = [
         "Late-game creation should be tested"
       ],
       win_probabilities: [
-        {
-          participant_id: "nyk",
-          probability: 0.52
-        },
-        {
-          participant_id: "mil",
-          probability: 0.48
-        }
+        { participant_id: "nyk", probability: 0.52 },
+        { participant_id: "mil", probability: 0.48 }
       ]
     }
   },
@@ -845,14 +2122,261 @@ const upcomingSeeds: UpcomingSeed[] = [
         "Open tactical matchup"
       ],
       win_probabilities: [
+        { participant_id: "mia", probability: 0.55 },
+        { participant_id: "atl", probability: 0.45 }
+      ]
+    }
+  },
+  {
+    region: "north-america",
+    match_id: "american-football:nfl:2026-06-20:phi:bal",
+    context: {
+      match: {
+        match_id: "american-football:nfl:2026-06-20:phi:bal",
+        match_name: "Philadelphia Eagles vs Baltimore Ravens",
+        sport: "american-football",
+        tournament_name: "NFL",
+        tournament_stage: "Regular Season",
+        scheduled_start_time: "2026-06-20T20:25:00.000Z",
+        venue: {
+          stadium: "Lincoln Financial Field",
+          city: "Philadelphia",
+          state: "Pennsylvania",
+          country: "United States"
+        }
+      },
+      participants: [
         {
-          participant_id: "mia",
-          probability: 0.55
+          participant_id: "phi",
+          name: "Philadelphia Eagles",
+          short_name: "PHI",
+          role: "home",
+          ranking: "2",
+          recent_form: ["W", "W", "W", "L", "W"]
         },
         {
-          participant_id: "atl",
-          probability: 0.45
+          participant_id: "bal",
+          name: "Baltimore Ravens",
+          short_name: "BAL",
+          role: "away",
+          ranking: "3",
+          recent_form: ["W", "L", "W", "W", "W"]
         }
+      ],
+      pre_match_intelligence: {
+        headline: "Explosive rushing design versus disguise-heavy defense",
+        summary:
+          "This matchup could flip on third-down efficiency and red-zone sequence quality.",
+        expected_competitiveness: 86,
+        key_matchup: "Eagles RPO pressure against Ravens linebacker timing"
+      },
+      context_version: 1,
+      context_fingerprint: "ctx_phi_bal_v1",
+      context_generated_at: "2026-06-16T20:05:00.000Z"
+    },
+    upcoming_intelligence: {
+      headline: "A premium NFL chess match in the coming window",
+      summary:
+        "Both teams bring top-tier structure, which raises the chance of a late one-possession finish.",
+      projected_competitiveness: 86,
+      watch_reasons: [
+        "High-end quarterback and run-game stress",
+        "Strong defensive adjustment potential",
+        "Likely one-possession script"
+      ],
+      win_probabilities: [
+        { participant_id: "phi", probability: 0.51 },
+        { participant_id: "bal", probability: 0.49 }
+      ]
+    }
+  },
+  {
+    region: "north-america",
+    match_id: "baseball:mlb:2026-06-19:hou:sea",
+    context: {
+      match: {
+        match_id: "baseball:mlb:2026-06-19:hou:sea",
+        match_name: "Houston Astros vs Seattle Mariners",
+        sport: "baseball",
+        tournament_name: "MLB",
+        tournament_stage: "Regular Season",
+        scheduled_start_time: "2026-06-19T23:10:00.000Z",
+        venue: {
+          stadium: "Minute Maid Park",
+          city: "Houston",
+          state: "Texas",
+          country: "United States"
+        }
+      },
+      participants: [
+        {
+          participant_id: "hou",
+          name: "Houston Astros",
+          short_name: "HOU",
+          role: "home",
+          ranking: "4",
+          recent_form: ["W", "L", "W", "W", "W"]
+        },
+        {
+          participant_id: "sea2",
+          name: "Seattle Mariners",
+          short_name: "SEA",
+          role: "away",
+          ranking: "5",
+          recent_form: ["W", "W", "L", "W", "L"]
+        }
+      ],
+      pre_match_intelligence: {
+        headline: "Pitch-sequencing precision should define the margin",
+        summary:
+          "Neither lineup gives away many at-bats, so late leverage spots could decide the game.",
+        expected_competitiveness: 78,
+        key_matchup: "Astros lefty bat path against Mariners bullpen shapes"
+      },
+      context_version: 1,
+      context_fingerprint: "ctx_hou_sea_v1",
+      context_generated_at: "2026-06-16T19:40:00.000Z"
+    },
+    upcoming_intelligence: {
+      headline: "A layered pitching-and-contact matchup",
+      summary:
+        "The game projects as close because both clubs can extend at-bats and pressure middle innings.",
+      projected_competitiveness: 78,
+      watch_reasons: [
+        "Bullpen sequencing matters",
+        "Both lineups can manufacture leverage",
+        "Expected narrow run margin"
+      ],
+      win_probabilities: [
+        { participant_id: "hou", probability: 0.53 },
+        { participant_id: "sea2", probability: 0.47 }
+      ]
+    }
+  },
+  {
+    region: "north-america",
+    match_id: "hockey:nhl:2026-06-19:tor:vgk",
+    context: {
+      match: {
+        match_id: "hockey:nhl:2026-06-19:tor:vgk",
+        match_name: "Toronto Maple Leafs vs Vegas Golden Knights",
+        sport: "hockey",
+        tournament_name: "NHL",
+        tournament_stage: "Regular Season",
+        scheduled_start_time: "2026-06-19T23:30:00.000Z",
+        venue: {
+          stadium: "Scotiabank Arena",
+          city: "Toronto",
+          state: "Ontario",
+          country: "Canada"
+        }
+      },
+      participants: [
+        {
+          participant_id: "tor",
+          name: "Toronto Maple Leafs",
+          short_name: "TOR",
+          role: "home",
+          ranking: "6",
+          recent_form: ["W", "W", "L", "D", "W"]
+        },
+        {
+          participant_id: "vgk",
+          name: "Vegas Golden Knights",
+          short_name: "VGK",
+          role: "away",
+          ranking: "4",
+          recent_form: ["W", "L", "W", "W", "L"]
+        }
+      ],
+      pre_match_intelligence: {
+        headline: "Rush attack versus controlled zone-entry defense",
+        summary:
+          "Expect momentum swings driven by transition chances and power-play discipline.",
+        expected_competitiveness: 79,
+        key_matchup:
+          "Toronto speed through neutral ice against Vegas gap control"
+      },
+      context_version: 1,
+      context_fingerprint: "ctx_tor_vgk_v1",
+      context_generated_at: "2026-06-16T18:15:00.000Z"
+    },
+    upcoming_intelligence: {
+      headline: "A strong cross-conference hockey matchup",
+      summary:
+        "The pace and transition quality suggest a game that stays tactically alive throughout.",
+      projected_competitiveness: 79,
+      watch_reasons: [
+        "High transition threat",
+        "Special teams could swing the margin",
+        "Even-strength play is closely matched"
+      ],
+      win_probabilities: [
+        { participant_id: "tor", probability: 0.5 },
+        { participant_id: "vgk", probability: 0.5 }
+      ]
+    }
+  },
+  {
+    region: "north-america",
+    match_id: "mma:ufc:2026-06-21:per:whi",
+    context: {
+      match: {
+        match_id: "mma:ufc:2026-06-21:per:whi",
+        match_name: "Alex Pereira vs Robert Whittaker",
+        sport: "mma",
+        tournament_name: "UFC",
+        tournament_stage: "Co-Main Event",
+        scheduled_start_time: "2026-06-21T03:00:00.000Z",
+        venue: {
+          stadium: "Crypto.com Arena",
+          city: "Los Angeles",
+          state: "California",
+          country: "United States"
+        }
+      },
+      participants: [
+        {
+          participant_id: "per",
+          name: "Alex Pereira",
+          short_name: "PER",
+          role: "home",
+          ranking: "1",
+          recent_form: ["W", "W", "W", "L", "W"]
+        },
+        {
+          participant_id: "whi",
+          name: "Robert Whittaker",
+          short_name: "WHI",
+          role: "away",
+          ranking: "3",
+          recent_form: ["W", "W", "L", "W", "W"]
+        }
+      ],
+      pre_match_intelligence: {
+        headline: "Kickboxing danger against layered movement",
+        summary:
+          "The fight should stay tactically dense until one side establishes a repeatable rhythm.",
+        expected_competitiveness: 75,
+        key_matchup: "Pereira range traps against Whittaker entries"
+      },
+      context_version: 1,
+      context_fingerprint: "ctx_per_whi_v1",
+      context_generated_at: "2026-06-16T19:55:00.000Z"
+    },
+    upcoming_intelligence: {
+      headline: "A striking-heavy UFC matchup with real finish upside",
+      summary:
+        "The matchup carries strong watchability because one clean sequence could reset the whole read.",
+      projected_competitiveness: 75,
+      watch_reasons: [
+        "High finish threat",
+        "Elite range management battle",
+        "Momentum can flip instantly"
+      ],
+      win_probabilities: [
+        { participant_id: "per", probability: 0.56 },
+        { participant_id: "whi", probability: 0.44 }
       ]
     }
   },
@@ -915,14 +2439,71 @@ const upcomingSeeds: UpcomingSeed[] = [
         "Likely narrow margin"
       ],
       win_probabilities: [
+        { participant_id: "int", probability: 0.54 },
+        { participant_id: "nap", probability: 0.46 }
+      ]
+    }
+  },
+  {
+    region: "europe",
+    match_id: "tennis:wta:2026-06-18:sab:iga",
+    context: {
+      match: {
+        match_id: "tennis:wta:2026-06-18:sab:iga",
+        match_name: "Aryna Sabalenka vs Iga Swiatek",
+        sport: "tennis",
+        tournament_name: "WTA Tour",
+        tournament_stage: "Semifinal",
+        scheduled_start_time: "2026-06-18T14:30:00.000Z",
+        venue: {
+          stadium: "Court Philippe-Chatrier",
+          city: "Paris",
+          state: "Ile-de-France",
+          country: "France"
+        }
+      },
+      participants: [
         {
-          participant_id: "int",
-          probability: 0.54
+          participant_id: "sab",
+          name: "Aryna Sabalenka",
+          short_name: "SAB",
+          role: "home",
+          ranking: "2",
+          recent_form: ["W", "W", "W", "L", "W"]
         },
         {
-          participant_id: "nap",
-          probability: 0.46
+          participant_id: "iga",
+          name: "Iga Swiatek",
+          short_name: "IGA",
+          role: "away",
+          ranking: "1",
+          recent_form: ["W", "W", "W", "W", "W"]
         }
+      ],
+      pre_match_intelligence: {
+        headline: "Power first-strike tennis meets elastic court defense",
+        summary:
+          "The matchup stays compelling because hold pressure can spike quickly in long deuce games.",
+        expected_competitiveness: 88,
+        key_matchup: "Sabalenka serve-plus-one against Swiatek return depth"
+      },
+      context_version: 1,
+      context_fingerprint: "ctx_sab_iga_v1",
+      context_generated_at: "2026-06-16T15:05:00.000Z"
+    },
+    upcoming_intelligence: {
+      headline: "One of the strongest tennis fixtures in the window",
+      summary:
+        "This matchup should stay tense because both players can turn small return edges into set pressure.",
+      projected_competitiveness: 88,
+      watch_reasons: [
+        "Elite baseline quality",
+        "Break-point leverage should be constant",
+        "Very narrow projected margin"
+      ],
+      win_probabilities: [
+        { participant_id: "sab", probability: 0.48 },
+        { participant_id: "iga", probability: 0.52 }
       ]
     }
   },
@@ -985,14 +2566,8 @@ const upcomingSeeds: UpcomingSeed[] = [
         "Likely momentum swings"
       ],
       win_probabilities: [
-        {
-          participant_id: "cor",
-          probability: 0.5
-        },
-        {
-          participant_id: "flu",
-          probability: 0.5
-        }
+        { participant_id: "cor", probability: 0.5 },
+        { participant_id: "flu", probability: 0.5 }
       ]
     }
   },
@@ -1054,14 +2629,72 @@ const upcomingSeeds: UpcomingSeed[] = [
         "Late-game execution test"
       ],
       win_probabilities: [
+        { participant_id: "tok", probability: 0.57 },
+        { participant_id: "osa", probability: 0.43 }
+      ]
+    }
+  },
+  {
+    region: "asia-pacific",
+    match_id: "cricket:t20:2026-06-18:pak:nz",
+    context: {
+      match: {
+        match_id: "cricket:t20:2026-06-18:pak:nz",
+        match_name: "Pakistan vs New Zealand",
+        sport: "cricket",
+        tournament_name: "T20 International",
+        tournament_stage: "Series Match",
+        scheduled_start_time: "2026-06-18T09:30:00.000Z",
+        venue: {
+          stadium: "Gaddafi Stadium",
+          city: "Lahore",
+          state: "Punjab",
+          country: "Pakistan"
+        }
+      },
+      participants: [
         {
-          participant_id: "tok",
-          probability: 0.57
+          participant_id: "pak",
+          name: "Pakistan",
+          short_name: "PAK",
+          role: "home",
+          ranking: "4",
+          recent_form: ["W", "L", "W", "W", "W"]
         },
         {
-          participant_id: "osa",
-          probability: 0.43
+          participant_id: "nz",
+          name: "New Zealand",
+          short_name: "NZ",
+          role: "away",
+          ranking: "5",
+          recent_form: ["W", "W", "L", "W", "D"]
         }
+      ],
+      pre_match_intelligence: {
+        headline: "Powerplay control may decide the chase shape",
+        summary:
+          "This matchup should stay open because both teams can compress the required rate quickly.",
+        expected_competitiveness: 81,
+        key_matchup:
+          "Pakistan new-ball movement against New Zealand top-order tempo"
+      },
+      context_version: 1,
+      context_fingerprint: "ctx_pak_nz_v1",
+      context_generated_at: "2026-06-16T07:50:00.000Z"
+    },
+    upcoming_intelligence: {
+      headline: "A compelling T20 matchup with chase volatility",
+      summary:
+        "The match projects as tightly balanced because both sides can accelerate sharply through the middle overs.",
+      projected_competitiveness: 81,
+      watch_reasons: [
+        "Powerplay leverage",
+        "Boundary-hitting depth",
+        "Volatile chase profile"
+      ],
+      win_probabilities: [
+        { participant_id: "pak", probability: 0.51 },
+        { participant_id: "nz", probability: 0.49 }
       ]
     }
   }

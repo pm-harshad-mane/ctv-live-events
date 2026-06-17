@@ -4,6 +4,8 @@ import { formatVenueLocation } from "../lib/matchPresentation";
 
 const VERIFICATION_HELP =
   "How strongly the backend trusts this live state based on source quality, corroboration, and live-data confidence.";
+const formatProbability = (value: number): string =>
+  `${Math.round(value * 100)}%`;
 
 type EventCardProps = {
   event: LiveEvent;
@@ -21,6 +23,17 @@ export const EventCard = ({
   const activeTimeLeft = useActiveCountdown(
     event.live_state.clock.remaining_seconds
   );
+  const participants = event.context?.participants ?? [];
+  const winProbabilities = event.live_state.live_predictions.win_probabilities
+    .map((prediction) => ({
+      ...prediction,
+      name:
+        participants.find(
+          (participant) =>
+            participant.participant_id === prediction.participant_id
+        )?.name ?? prediction.participant_id
+    }))
+    .sort((left, right) => right.probability - left.probability);
 
   return (
     <article
@@ -36,6 +49,27 @@ export const EventCard = ({
         <p className="event-card__clock">{event.live_state.clock.display}</p>
       </div>
       <p className="event-card__summary">Time left: {activeTimeLeft}</p>
+      <div className="event-card__probability-band">
+        {winProbabilities.map((prediction) => (
+          <div
+            key={prediction.participant_id}
+            className="event-card__probability"
+          >
+            <span>{prediction.name}</span>
+            <strong>{formatProbability(prediction.probability)}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="event-card__metrics">
+        <div className="event-card__metric">
+          <span>Excitement</span>
+          <strong>{event.live_state.excitement.aggregate_score}</strong>
+        </div>
+        <div className="event-card__metric">
+          <span>Criticality</span>
+          <strong>{event.live_state.criticality.score}</strong>
+        </div>
+      </div>
       <p className="event-card__headline">
         {event.live_state.what_is_happening.headline}
       </p>
@@ -53,9 +87,11 @@ export const EventCard = ({
         ))}
       </ul>
       <footer className="event-card__footer">
-        <span>Excitement: {event.live_state.excitement.aggregate_score}</span>
         <span>{event.live_state.momentum.summary}</span>
-        <span title={VERIFICATION_HELP} aria-label={`Verified. ${VERIFICATION_HELP}`}>
+        <span
+          title={VERIFICATION_HELP}
+          aria-label={`Verified. ${VERIFICATION_HELP}`}
+        >
           Verified: {Math.round(event.live_state.verification.confidence * 100)}
           %
         </span>
