@@ -28,6 +28,13 @@ type LiveMatchDetail = {
   liveState: LiveState;
 };
 
+type TrackerHistoryPoint = {
+  capturedAt: string;
+  liveState: LiveState;
+};
+
+const TRACKER_IDLE_MESSAGE = "Choose a live match to track.";
+
 const buildIdentity = (event: LiveEvent): MatchIdentity => ({
   match_id: event.match_id,
   sport: event.context?.match.sport ?? "unknown",
@@ -46,20 +53,61 @@ const mergeDiscovery = (
   currentEvents: LiveEvent[],
   incomingEvents: LiveEvent[]
 ): LiveEvent[] => {
+  const semanticKeyForEvent = (event: LiveEvent): string => {
+    const context = event.context;
+    if (!context) {
+      return event.match_id;
+    }
+
+    const participantKey = context.participants
+      .map((participant) => participant.name.trim().toLowerCase())
+      .sort()
+      .join("|");
+
+    return [
+      context.match.sport,
+      context.match.scheduled_start_time,
+      participantKey
+    ].join("::");
+  };
+
   const byId = new Map(currentEvents.map((event) => [event.match_id, event]));
+  const bySemanticKey = new Map(
+    currentEvents.map((event) => [semanticKeyForEvent(event), event])
+  );
   for (const incoming of incomingEvents) {
-    const existing = byId.get(incoming.match_id);
+    const existing =
+      byId.get(incoming.match_id) ?? bySemanticKey.get(semanticKeyForEvent(incoming));
+    const acceptedState =
+      existing && !shouldAcceptLiveStateUpdate(existing.live_state, incoming.live_state)
+        ? existing.live_state
+        : incoming.live_state;
+
     byId.set(incoming.match_id, {
+      ...(existing ?? incoming),
       ...incoming,
+      match_id: existing?.match_id ?? incoming.match_id,
       context:
         incoming.context_status === "unchanged" && existing?.context
           ? existing.context
           : incoming.context,
-      live_state: incoming.live_state
+      live_state: acceptedState,
+      freshness: existing
+        ? {
+            ...incoming.freshness,
+            state_generated_at: acceptedState.freshness.generated_at,
+            state_age_seconds: acceptedState.freshness.age_seconds
+          }
+        : incoming.freshness
     });
   }
   return Array.from(byId.values());
 };
+
+const preserveCurrentSlateOnWeakDiscovery = (
+  currentEvents: LiveEvent[],
+  incomingEvents: LiveEvent[]
+): boolean => currentEvents.length > 0 && incomingEvents.length === 0;
 
 const mergeStates = (
   currentEvents: LiveEvent[],
@@ -70,16 +118,107 @@ const mergeStates = (
     if (!nextState) {
       return event;
     }
+
+    const acceptedState = shouldAcceptLiveStateUpdate(
+      event.live_state,
+      nextState
+    )
+      ? nextState
+      : event.live_state;
     return {
       ...event,
-      live_state: nextState,
+      live_state: acceptedState,
       freshness: {
         ...event.freshness,
-        state_generated_at: nextState.freshness.generated_at,
-        state_age_seconds: nextState.freshness.age_seconds
+        state_generated_at: acceptedState.freshness.generated_at,
+        state_age_seconds: acceptedState.freshness.age_seconds
       }
     };
   });
+
+const INVALID_SCORE_TOKENS = new Set(["null", "undefined", "nan"]);
+const GENERIC_LIVE_HEADLINES = new Set([
+  "match in progress",
+  "match status unverified"
+]);
+
+const hasInvalidScoreData = (state: LiveState): boolean => {
+  const display = state.score.display.trim().toLowerCase();
+  if (INVALID_SCORE_TOKENS.has(display)) {
+    return true;
+  }
+
+  return state.score.participant_scores.some((participantScore) =>
+    INVALID_SCORE_TOKENS.has(
+      participantScore.display_score.trim().toLowerCase()
+    )
+  );
+};
+
+const getAggregateNumericScore = (state: LiveState): number =>
+  state.score.participant_scores.reduce(
+    (total, participantScore) => total + participantScore.numeric_score,
+    0
+  );
+
+const isGenericFallbackState = (state: LiveState): boolean => {
+  const headline = state.summary.headline.trim().toLowerCase();
+  const shortByte = state.summary.short_byte.trim().toLowerCase();
+  const watchability = state.watchability;
+
+  return (
+    GENERIC_LIVE_HEADLINES.has(headline) ||
+    GENERIC_LIVE_HEADLINES.has(shortByte) ||
+    (watchability.current_score === 50 &&
+      watchability.tension_score === 50 &&
+      watchability.scoring_imminence_score === 50 &&
+      watchability.swing_potential_score === 50 &&
+      watchability.state_clarity_score === 50 &&
+      watchability.evidence_strength_score === 50)
+  );
+};
+
+const shouldAcceptLiveStateUpdate = (
+  currentState: LiveState,
+  nextState: LiveState
+): boolean => {
+  if (hasInvalidScoreData(nextState)) {
+    return false;
+  }
+
+  if (
+    nextState.match_status === "unverified" &&
+    currentState.verification.confidence > nextState.verification.confidence
+  ) {
+    return false;
+  }
+
+  const currentAggregateScore = getAggregateNumericScore(currentState);
+  const nextAggregateScore = getAggregateNumericScore(nextState);
+
+  if (
+    currentAggregateScore > 0 &&
+    nextAggregateScore === 0 &&
+    isGenericFallbackState(nextState)
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
+const appendTrackerHistory = (
+  currentHistory: TrackerHistoryPoint[],
+  nextState: LiveState
+): TrackerHistoryPoint[] => {
+  const capturedAt = nextState.freshness.generated_at;
+  if (currentHistory.at(-1)?.capturedAt === capturedAt) {
+    return currentHistory;
+  }
+
+  const nextHistory = [...currentHistory, { capturedAt, liveState: nextState }];
+  return nextHistory.slice(-40);
+};
 
 const filterUiWarnings = (warnings: string[]): string[] =>
   warnings.filter(
@@ -134,6 +273,23 @@ export const useLiveEvents = () => {
   const [serviceDisabled, setServiceDisabled] = useState(false);
   const [stateCountdown, setStateCountdown] = useState(60);
   const [discoveryCountdown, setDiscoveryCountdown] = useState(300);
+  const [trackedLiveMatchId, setTrackedLiveMatchId] = useState<string | null>(
+    null
+  );
+  const [trackedLiveSnapshot, setTrackedLiveSnapshot] = useState<LiveEvent | null>(
+    null
+  );
+  const [trackerHistory, setTrackerHistory] = useState<TrackerHistoryPoint[]>(
+    []
+  );
+  const [trackerPollingIntervalSeconds, setTrackerPollingIntervalSeconds] =
+    useState(60);
+  const [trackerUpdatesEnabled, setTrackerUpdatesEnabled] = useState(false);
+  const [trackerCountdown, setTrackerCountdown] = useState(60);
+  const [trackerLoading, setTrackerLoading] = useState(false);
+  const [trackerStatusMessage, setTrackerStatusMessage] =
+    useState(TRACKER_IDLE_MESSAGE);
+  const [trackerError, setTrackerError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const liveControllerRef = useRef<AbortController | null>(null);
   const upcomingControllerRef = useRef<AbortController | null>(null);
@@ -142,6 +298,8 @@ export const useLiveEvents = () => {
 
   const eventIdentities = useMemo(() => events.map(buildIdentity), [events]);
   const manualFetchMode = config ? !config.use_mock_data : false;
+  const trackedLiveEvent = trackedLiveSnapshot;
+  const trackerLastUpdatedAt = trackerHistory.at(-1)?.capturedAt ?? null;
 
   const resetLoadedState = (nextConfig: PublicConfig) => {
     liveControllerRef.current?.abort();
@@ -156,6 +314,15 @@ export const useLiveEvents = () => {
     setSelectedUpcomingMatchId(null);
     setSelectedLiveMatchDetail(null);
     setSelectedUpcomingMatchDetail(null);
+    setTrackedLiveMatchId(null);
+    setTrackedLiveSnapshot(null);
+    setTrackerHistory([]);
+    setTrackerUpdatesEnabled(false);
+    setTrackerPollingIntervalSeconds(60);
+    setTrackerCountdown(60);
+    setTrackerLoading(false);
+    setTrackerError(null);
+    setTrackerStatusMessage(TRACKER_IDLE_MESSAGE);
     setDetailStatus("idle");
     setDetailError(null);
     setHasLoadedLiveOnce(false);
@@ -249,6 +416,62 @@ export const useLiveEvents = () => {
   }, [events, selectedLiveMatchId, selectedUpcomingMatchId]);
 
   useEffect(() => {
+    if (!trackedLiveMatchId) {
+      setTrackerHistory([]);
+      setTrackedLiveSnapshot(null);
+      setTrackerError(null);
+      setTrackerLoading(false);
+      setTrackerUpdatesEnabled(false);
+      setTrackerCountdown(trackerPollingIntervalSeconds);
+      setTrackerStatusMessage(TRACKER_IDLE_MESSAGE);
+      return;
+    }
+
+    if (!trackedLiveSnapshot || !trackedLiveSnapshot.context) {
+      const nextTrackedEvent =
+        events.find((event) => event.match_id === trackedLiveMatchId) ?? null;
+      if (nextTrackedEvent) {
+        setTrackedLiveSnapshot(nextTrackedEvent);
+      } else {
+        setTrackerError("Tracked match is no longer available in the live slate.");
+        setTrackerStatusMessage("Tracked match is unavailable.");
+      }
+      return;
+    }
+
+    if (!trackedLiveSnapshot.context) {
+      setTrackerError("Tracked match is no longer available in the live slate.");
+      setTrackerStatusMessage("Tracked match is unavailable.");
+      return;
+    }
+
+    setTrackerError(null);
+    const trackedMatchName = trackedLiveSnapshot.context.match.match_name;
+    setTrackerHistory((current) =>
+      appendTrackerHistory(current, trackedLiveSnapshot.live_state)
+    );
+    setTrackerStatusMessage((current) => {
+      if (
+        current === TRACKER_IDLE_MESSAGE ||
+        current === "Preparing tracked match view..." ||
+        current === "Tracked match is unavailable."
+      ) {
+        return trackerUpdatesEnabled
+          ? `Tracking ${trackedMatchName}.`
+          : `Tracking ${trackedMatchName}. Auto refresh is paused.`;
+      }
+
+      return current;
+    });
+  }, [
+    events,
+    trackedLiveMatchId,
+    trackedLiveSnapshot,
+    trackerPollingIntervalSeconds,
+    trackerUpdatesEnabled
+  ]);
+
+  useEffect(() => {
     if (!selectedUpcomingMatchId) {
       setSelectedUpcomingMatchDetail(null);
       if (!selectedLiveMatchId) {
@@ -290,6 +513,14 @@ export const useLiveEvents = () => {
     setLiveWarnings([]);
     setSelectedLiveMatchId(null);
     setSelectedLiveMatchDetail(null);
+    setTrackedLiveMatchId(null);
+    setTrackedLiveSnapshot(null);
+    setTrackerHistory([]);
+    setTrackerUpdatesEnabled(false);
+    setTrackerLoading(false);
+    setTrackerError(null);
+    setTrackerCountdown(60);
+    setTrackerStatusMessage(TRACKER_IDLE_MESSAGE);
     setHasLoadedLiveOnce(false);
     setStateCountdown(config.state_refresh_after_seconds);
     setDiscoveryCountdown(config.discovery_refresh_after_seconds);
@@ -326,6 +557,10 @@ export const useLiveEvents = () => {
   ]);
 
   useEffect(() => {
+    setTrackerCountdown(trackerPollingIntervalSeconds);
+  }, [trackerPollingIntervalSeconds]);
+
+  useEffect(() => {
     if (!config || serviceDisabled || liveFetchTrigger === 0) {
       return;
     }
@@ -348,7 +583,11 @@ export const useLiveEvents = () => {
           controller.signal
         );
 
-        setEvents(discovery.data.events);
+        setEvents((current) =>
+          preserveCurrentSlateOnWeakDiscovery(current, discovery.data.events)
+            ? current
+            : mergeDiscovery(current, discovery.data.events)
+        );
         setStaleMatchIds([]);
         setLiveWarnings(filterUiWarnings(discovery.warnings));
         setServiceDisabled(false);
@@ -358,6 +597,8 @@ export const useLiveEvents = () => {
         setStatusMessage(
           discovery.data.events.length > 0
             ? "Live events loaded."
+            : events.length > 0
+              ? "No newly verified live matches were returned. Keeping the previous live slate."
             : "No live matches were returned for the current filter."
         );
       } catch (error) {
@@ -549,6 +790,23 @@ export const useLiveEvents = () => {
 
   useEffect(() => {
     if (
+      !trackedLiveMatchId ||
+      !trackedLiveEvent ||
+      !trackedLiveEvent.context ||
+      !trackerUpdatesEnabled
+    ) {
+      return;
+    }
+
+    const tick = window.setInterval(() => {
+      setTrackerCountdown((current) => (current > 0 ? current - 1 : 0));
+    }, 1000);
+
+    return () => window.clearInterval(tick);
+  }, [trackedLiveEvent, trackedLiveMatchId, trackerUpdatesEnabled]);
+
+  useEffect(() => {
+    if (
       !config ||
       serviceDisabled ||
       !hasLoadedLiveOnce ||
@@ -575,7 +833,11 @@ export const useLiveEvents = () => {
       controller.signal
     )
       .then((payload) => {
-        setEvents((current) => mergeDiscovery(current, payload.data.events));
+        setEvents((current) =>
+          preserveCurrentSlateOnWeakDiscovery(current, payload.data.events)
+            ? current
+            : mergeDiscovery(current, payload.data.events)
+        );
         setLiveWarnings(filterUiWarnings(payload.warnings));
         setStaleMatchIds((current) =>
           current.filter((matchId) =>
@@ -583,6 +845,11 @@ export const useLiveEvents = () => {
           )
         );
         setDiscoveryCountdown(config.discovery_refresh_after_seconds);
+        if (payload.data.events.length === 0 && events.length > 0) {
+          setStatusMessage(
+            "No newly verified live matches were returned. Keeping the previous live slate."
+          );
+        }
       })
       .catch((error: unknown) => {
         if (error instanceof ApiError && error.code === "AI_USAGE_DISABLED") {
@@ -628,6 +895,137 @@ export const useLiveEvents = () => {
     }
     setStateCountdown(0);
   };
+
+  const refreshTrackedMatchNow = async () => {
+    if (!trackedLiveSnapshot || !trackedLiveSnapshot.context) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 45000);
+
+    setTrackerLoading(true);
+    setTrackerError(null);
+    setTrackerStatusMessage(
+      "Refreshing tracked match. Live provider calls can take several seconds."
+    );
+
+    try {
+      const payload = await refreshLiveStates(
+        {
+          region: filters.region,
+          sport: filters.sport,
+          matches: [buildIdentity(trackedLiveSnapshot)]
+        },
+        controller.signal
+      );
+
+      const failedMatch = payload.data.failed_matches.find(
+        (match) => match.match_id === trackedLiveSnapshot.match_id
+      );
+      if (failedMatch) {
+        setTrackerError(failedMatch.message);
+        setTrackerStatusMessage("Tracked match refresh failed.");
+        setTrackerCountdown(trackerPollingIntervalSeconds);
+        return;
+      }
+
+      const nextState = payload.data.states.find(
+        (state) => state.match_id === trackedLiveSnapshot.match_id
+      );
+      if (!nextState) {
+        setTrackerError("Tracked match state was not returned.");
+        setTrackerStatusMessage("Tracked match refresh failed.");
+        setTrackerCountdown(trackerPollingIntervalSeconds);
+        return;
+      }
+
+      const acceptedState = shouldAcceptLiveStateUpdate(
+        trackedLiveSnapshot.live_state,
+        nextState
+      )
+        ? nextState
+        : trackedLiveSnapshot.live_state;
+
+      setEvents((current) =>
+        mergeStates(
+          current,
+          new Map([[trackedLiveSnapshot.match_id, acceptedState]])
+        )
+      );
+      setTrackedLiveSnapshot((current) =>
+        current
+          ? {
+              ...current,
+              live_state: acceptedState,
+              freshness: {
+                ...current.freshness,
+                state_generated_at: acceptedState.freshness.generated_at,
+                state_age_seconds: acceptedState.freshness.age_seconds
+              }
+            }
+          : current
+      );
+      setTrackerHistory((current) =>
+        appendTrackerHistory(current, acceptedState)
+      );
+      setTrackerCountdown(trackerPollingIntervalSeconds);
+      setTrackerStatusMessage(
+        payload.warnings.length > 0
+          ? "Tracked match refreshed with provider warnings."
+          : "Tracked match refreshed."
+      );
+      setLiveWarnings(filterUiWarnings(payload.warnings));
+    } catch (error) {
+      if ((error as Error).name === "AbortError") {
+        setTrackerError(
+          "Tracked match refresh timed out before the provider returned."
+        );
+        setTrackerStatusMessage("Tracked match refresh timed out.");
+        setTrackerCountdown(trackerPollingIntervalSeconds);
+        return;
+      }
+
+      if (error instanceof ApiError && error.code === "AI_USAGE_DISABLED") {
+        setServiceDisabled(true);
+        setStatusMessage("Live sports intelligence is temporarily unavailable.");
+        setUpcomingStatusMessage(
+          "Upcoming sports intelligence is temporarily unavailable."
+        );
+        return;
+      }
+
+      setTrackerError((error as Error).message);
+      setTrackerStatusMessage("Tracked match refresh failed.");
+      setTrackerCountdown(trackerPollingIntervalSeconds);
+    } finally {
+      window.clearTimeout(timeout);
+      setTrackerLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (
+      !trackedLiveMatchId ||
+      !trackedLiveSnapshot ||
+      !trackerUpdatesEnabled ||
+      trackerLoading
+    ) {
+      return;
+    }
+
+    if (trackerCountdown !== 0) {
+      return;
+    }
+
+    void refreshTrackedMatchNow();
+  }, [
+    trackedLiveSnapshot,
+    trackedLiveMatchId,
+    trackerCountdown,
+    trackerLoading,
+    trackerUpdatesEnabled
+  ]);
 
   const rediscoverNow = async () => {
     if (!config || !hasLoadedLiveOnce) {
@@ -681,6 +1079,28 @@ export const useLiveEvents = () => {
     setSelectedUpcomingMatchId(matchId);
   };
 
+  const selectTrackedLiveMatch = (matchId: string) => {
+    if (!matchId) {
+      setTrackedLiveMatchId(null);
+      setTrackedLiveSnapshot(null);
+      setTrackerHistory([]);
+      setTrackerUpdatesEnabled(false);
+      setTrackerCountdown(trackerPollingIntervalSeconds);
+      setTrackerError(null);
+      setTrackerStatusMessage(TRACKER_IDLE_MESSAGE);
+      return;
+    }
+
+    setTrackedLiveMatchId(matchId);
+    setTrackedLiveSnapshot(
+      events.find((event) => event.match_id === matchId) ?? null
+    );
+    setTrackerHistory([]);
+    setTrackerCountdown(trackerPollingIntervalSeconds);
+    setTrackerError(null);
+    setTrackerStatusMessage("Preparing tracked match view...");
+  };
+
   const clearDetailSelection = () => {
     detailControllerRef.current?.abort();
     setSelectedLiveMatchId(null);
@@ -694,6 +1114,8 @@ export const useLiveEvents = () => {
   return {
     config,
     events,
+    trackedLiveEvent,
+    trackerHistory,
     upcomingEvents,
     liveLoading,
     upcomingLoading,
@@ -716,17 +1138,29 @@ export const useLiveEvents = () => {
     statusMessage,
     stateCountdown,
     discoveryCountdown,
+    trackedLiveMatchId,
+    trackerPollingIntervalSeconds,
+    trackerUpdatesEnabled,
+    trackerCountdown,
+    trackerLoading,
+    trackerStatusMessage,
+    trackerError,
+    trackerLastUpdatedAt,
     hasLoadedLiveOnce,
     hasLoadedUpcomingOnce,
     setFilters,
     setUpcomingDays,
     setPeriodicUpdatesEnabled,
+    setTrackerPollingIntervalSeconds,
+    setTrackerUpdatesEnabled,
     selectLiveMatch,
     selectUpcomingMatch,
+    selectTrackedLiveMatch,
     clearDetailSelection,
     loadLiveNow,
     loadUpcomingNow,
     refreshStateNow,
+    refreshTrackedMatchNow,
     rediscoverNow,
     retryAfterDisabled,
     changeActiveModel

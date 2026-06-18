@@ -23,6 +23,20 @@ export const EventCard = ({
   const activeTimeLeft = useActiveCountdown(
     event.live_state.clock.remaining_seconds
   );
+  const watchability = event.live_state.watchability ?? {
+    current_score: 50,
+    tension_score: 50,
+    scoring_imminence_score: 50,
+    swing_potential_score: 50,
+    state_clarity_score: 50,
+    evidence_strength_score: 50
+  };
+  const crossPhaseScores = event.live_state.cross_phase_scores ?? {
+    stakes_score: 50,
+    star_power_score: 50,
+    upset_potential_score: 50,
+    narrative_strength_score: 50
+  };
   const participants = event.context?.participants ?? [];
   const winProbabilities = event.live_state.live_predictions.win_probabilities
     .map((prediction) => ({
@@ -34,6 +48,42 @@ export const EventCard = ({
         )?.name ?? prediction.participant_id
     }))
     .sort((left, right) => right.probability - left.probability);
+  const primaryScores = [
+    {
+      label: "Watchability",
+      value: watchability.current_score
+    },
+    { label: "Tension", value: watchability.tension_score },
+    {
+      label: "Swing potential",
+      value: watchability.swing_potential_score
+    },
+    {
+      label: "Scoring imminence",
+      value: watchability.scoring_imminence_score
+    },
+    { label: "Stakes", value: crossPhaseScores.stakes_score },
+    {
+      label: "Star power",
+      value: crossPhaseScores.star_power_score
+    },
+    {
+      label: "Narrative",
+      value: crossPhaseScores.narrative_strength_score
+    },
+    {
+      label: "Upset",
+      value: crossPhaseScores.upset_potential_score
+    },
+    {
+      label: "Clarity",
+      value: watchability.state_clarity_score
+    },
+    {
+      label: "Evidence",
+      value: watchability.evidence_strength_score
+    }
+  ];
 
   return (
     <article
@@ -60,14 +110,32 @@ export const EventCard = ({
           </div>
         ))}
       </div>
-      <div className="event-card__metrics">
-        <div className="event-card__metric">
-          <span>Excitement</span>
-          <strong>{event.live_state.excitement.aggregate_score}</strong>
+      <div className="event-card__score-stack">
+        <div className="event-card__score-grid event-card__score-grid--dense">
+          {primaryScores.map((score) => (
+            <div key={score.label} className="event-card__metric">
+              <span>{score.label}</span>
+              <strong>{score.value}</strong>
+            </div>
+          ))}
         </div>
-        <div className="event-card__metric">
-          <span>Criticality</span>
-          <strong>{event.live_state.criticality.score}</strong>
+        <div className="event-card__score-grid event-card__score-grid--compact">
+          <div className="event-card__metric">
+            <span>Excitement</span>
+            <strong>{event.live_state.excitement.aggregate_score}</strong>
+          </div>
+          <div className="event-card__metric">
+            <span>Criticality</span>
+            <strong>{event.live_state.criticality.score}</strong>
+          </div>
+          <div className="event-card__metric">
+            <span>Balance</span>
+            <strong>{event.live_state.competitive_balance.score}</strong>
+          </div>
+          <div className="event-card__metric">
+            <span>Momentum</span>
+            <strong>{event.live_state.momentum.score}</strong>
+          </div>
         </div>
       </div>
       <p className="event-card__headline">

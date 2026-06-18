@@ -2,13 +2,18 @@ import { useEffect, useState } from "react";
 import type { ProviderMode } from "../shared/schemas/live";
 import { DetailPanel } from "./components/DetailPanel";
 import { EventCard } from "./components/EventCard";
+import { LiveMatchTracker } from "./components/LiveMatchTracker";
 import { UpcomingCard } from "./components/UpcomingCard";
 import { useLiveEvents } from "./hooks/useLiveEvents";
 
-type AppPage = "live" | "upcoming";
+type AppPage = "live" | "upcoming" | "tracker";
 
 const getPageFromHash = (): AppPage =>
-  window.location.hash === "#/upcoming" ? "upcoming" : "live";
+  window.location.hash === "#/upcoming"
+    ? "upcoming"
+    : window.location.hash === "#/tracker"
+      ? "tracker"
+      : "live";
 
 export const App = () => {
   const {
@@ -21,6 +26,8 @@ export const App = () => {
     selectedUpcomingMatchId,
     selectedLiveMatchDetail,
     selectedUpcomingMatchDetail,
+    trackedLiveEvent,
+    trackerHistory,
     liveWarnings,
     upcomingWarnings,
     detailStatus,
@@ -35,19 +42,31 @@ export const App = () => {
     statusMessage,
     stateCountdown,
     discoveryCountdown,
+    trackedLiveMatchId,
+    trackerPollingIntervalSeconds,
+    trackerUpdatesEnabled,
+    trackerCountdown,
+    trackerLoading,
+    trackerStatusMessage,
+    trackerError,
+    trackerLastUpdatedAt,
     hasLoadedLiveOnce,
     hasLoadedUpcomingOnce,
     config,
     setFilters,
     setUpcomingDays,
     setPeriodicUpdatesEnabled,
+    setTrackerPollingIntervalSeconds,
+    setTrackerUpdatesEnabled,
     selectLiveMatch,
     selectUpcomingMatch,
+    selectTrackedLiveMatch,
     clearDetailSelection,
     changeActiveModel,
     loadLiveNow,
     loadUpcomingNow,
     refreshStateNow,
+    refreshTrackedMatchNow,
     rediscoverNow,
     retryAfterDisabled
   } = useLiveEvents();
@@ -102,6 +121,14 @@ export const App = () => {
             }`}
           >
             Upcoming
+          </a>
+          <a
+            href="#/tracker"
+            className={`page-nav__link ${
+              activePage === "tracker" ? "page-nav__link--active" : ""
+            }`}
+          >
+            Tracker
           </a>
         </nav>
 
@@ -217,7 +244,7 @@ export const App = () => {
               <span>Periodic live updates</span>
             </label>
           </div>
-        ) : (
+        ) : activePage === "upcoming" ? (
           <div className="toolbar__actions">
             <button
               type="button"
@@ -229,6 +256,68 @@ export const App = () => {
                 : "Load upcoming matches"}
             </button>
           </div>
+        ) : (
+          <>
+            <label className="toolbar__field toolbar__field--wide">
+              <span>Tracked Match</span>
+              <select
+                value={trackedLiveMatchId ?? ""}
+                onChange={(event) => selectTrackedLiveMatch(event.target.value)}
+                disabled={liveLoading || events.length === 0}
+              >
+                <option value="">Select one live match</option>
+                {events.map((event) => (
+                  <option key={event.match_id} value={event.match_id}>
+                    {event.context?.match.match_name ?? event.match_id}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="toolbar__field">
+              <span>Refresh cadence</span>
+              <select
+                value={trackerPollingIntervalSeconds}
+                onChange={(event) =>
+                  setTrackerPollingIntervalSeconds(Number(event.target.value))
+                }
+                disabled={!trackedLiveMatchId}
+              >
+                <option value={60}>1 minute</option>
+                <option value={180}>3 minutes</option>
+                <option value={420}>7 minutes</option>
+                <option value={600}>10 minutes</option>
+              </select>
+            </label>
+
+            <div className="toolbar__actions">
+              <button
+                type="button"
+                onClick={() => void loadLiveNow()}
+                disabled={serviceDisabled || liveLoading}
+              >
+                {hasLoadedLiveOnce ? "Reload live matches" : "Load live matches"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void refreshTrackedMatchNow()}
+                disabled={serviceDisabled || !trackedLiveMatchId || trackerLoading}
+              >
+                Refresh tracked match
+              </button>
+              <label className="toolbar__toggle">
+                <input
+                  type="checkbox"
+                  checked={trackerUpdatesEnabled}
+                  onChange={(event) =>
+                    setTrackerUpdatesEnabled(event.target.checked)
+                  }
+                  disabled={serviceDisabled || !trackedLiveMatchId}
+                />
+                <span>Periodic tracker updates</span>
+              </label>
+            </div>
+          </>
         )}
       </section>
 
@@ -256,12 +345,43 @@ export const App = () => {
             </ul>
           ) : null}
         </section>
-      ) : (
+      ) : activePage === "upcoming" ? (
         <section className="status-panel">
           <p>{upcomingStatusMessage}</p>
           {upcomingWarnings.length > 0 ? (
             <ul className="status-panel__warnings">
               {upcomingWarnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : (
+        <section className="status-panel">
+          <p>{trackerStatusMessage}</p>
+          {trackerLastUpdatedAt ? (
+            <p>
+              Last tracker update at{" "}
+              {new Date(trackerLastUpdatedAt).toLocaleTimeString([], {
+                hour: "numeric",
+                minute: "2-digit",
+                second: "2-digit"
+              })}
+            </p>
+          ) : null}
+          {trackedLiveMatchId && trackerLoading ? (
+            <p>Tracker refresh is in progress.</p>
+          ) : trackedLiveMatchId && trackerUpdatesEnabled ? (
+            <p>Next tracker refresh in {trackerCountdown}s</p>
+          ) : trackedLiveMatchId ? (
+            <p>Periodic tracker updates are paused.</p>
+          ) : null}
+          {trackerError ? (
+            <p className="status-panel__error">{trackerError}</p>
+          ) : null}
+          {liveWarnings.length > 0 ? (
+            <ul className="status-panel__warnings">
+              {liveWarnings.map((warning) => (
                 <li key={warning}>{warning}</li>
               ))}
             </ul>
@@ -316,7 +436,7 @@ export const App = () => {
             </div>
           )}
         </section>
-      ) : (
+      ) : activePage === "upcoming" ? (
         <section className="section-block">
           <div className="section-header">
             <div>
@@ -351,6 +471,40 @@ export const App = () => {
             <div className="empty-state">
               No upcoming {filters.sport === "all" ? "matches" : filters.sport}{" "}
               in the selected window.
+            </div>
+          )}
+        </section>
+      ) : (
+        <section className="section-block">
+          <div className="section-header">
+            <div>
+              <p className="hero__kicker">Tracker</p>
+              <h2>Follow one live match over time.</h2>
+            </div>
+          </div>
+          {showLiveLoadingState ? (
+            <div className="loading-state">
+              Loading live {filters.sport === "all" ? "events" : filters.sport}
+              ...
+            </div>
+          ) : manualFetchMode && !hasLoadedLiveOnce ? (
+            <div className="empty-state">
+              Click "Load live matches" to choose a single live match to track.
+            </div>
+          ) : trackedLiveEvent ? (
+            <LiveMatchTracker
+              event={trackedLiveEvent}
+              history={trackerHistory}
+            />
+          ) : events.length === 0 ? (
+            <div className="empty-state">
+              No live {filters.sport === "all" ? "events" : filters.sport}{" "}
+              matches are available to track right now.
+            </div>
+          ) : (
+            <div className="empty-state">
+              Choose one of the current live matches from the tracker controls
+              to start recording score trends.
             </div>
           )}
         </section>

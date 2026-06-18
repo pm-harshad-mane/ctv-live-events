@@ -793,6 +793,206 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the stronger live score when a generic zeroed refresh regresses it", async () => {
+    const user = userEvent.setup();
+    const baseFetch = global.fetch;
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/events/live/state")) {
+        return jsonResponse({
+          data: {
+            meta: {
+              count: 1,
+              region: "north-america",
+              sport: "all",
+              state_refresh_after_seconds: 60,
+              discovery_refresh_after_seconds: 300,
+              ai_service_available: true
+            },
+            states: [
+              {
+                match_id: "basketball:nba:demo",
+                match_status: "live",
+                period: {
+                  code: "fourth_quarter",
+                  display: "4th Quarter"
+                },
+                clock: {
+                  display: "01:48",
+                  elapsed_seconds: 126,
+                  remaining_seconds: 108
+                },
+                score: {
+                  participant_scores: [
+                    {
+                      participant_id: "bos",
+                      display_score: "0",
+                      numeric_score: 0
+                    },
+                    {
+                      participant_id: "gsw",
+                      display_score: "0",
+                      numeric_score: 0
+                    }
+                  ],
+                  display: "0-0",
+                  score_differential: 0
+                },
+                sport_specific: {
+                  quarter: 4
+                },
+                current_possession_or_control: {
+                  participant_id: "bos",
+                  description: "Boston has the ball in the front court."
+                },
+                active_players: [],
+                what_is_happening: {
+                  headline: "Match in progress",
+                  summary: "Generic live fallback",
+                  situation_code: "active_play",
+                  key_entity_ids: ["bos", "gsw"]
+                },
+                last_major_event: {
+                  event_id: "evt_fallback",
+                  event_type: "status",
+                  participant_id: "bos",
+                  player_id: null,
+                  description: "Generic fallback event",
+                  match_time: "01:48",
+                  event_importance: 10
+                },
+                recent_events: [],
+                special_state: {
+                  is_timeout: false,
+                  is_under_review: false,
+                  is_injury_delay: false,
+                  is_weather_delay: false,
+                  is_overtime_or_tiebreak: false,
+                  is_paused: false,
+                  is_postponed: false,
+                  is_cancelled: false,
+                  is_suspended: false,
+                  pause_reason: null,
+                  status_reason: null
+                },
+                excitement: {
+                  aggregate_score: 50,
+                  level: "medium",
+                  current_excitement: 50,
+                  recent_excitement: 50,
+                  expected_remaining_excitement: 50,
+                  reason_codes: []
+                },
+                criticality: {
+                  score: 50,
+                  level: "medium",
+                  reason_codes: []
+                },
+                competitive_balance: {
+                  score: 50,
+                  level: "even"
+                },
+                watchability: {
+                  current_score: 50,
+                  tension_score: 50,
+                  scoring_imminence_score: 50,
+                  swing_potential_score: 50,
+                  state_clarity_score: 50,
+                  evidence_strength_score: 50
+                },
+                cross_phase_scores: {
+                  stakes_score: 50,
+                  star_power_score: 50,
+                  upset_potential_score: 50,
+                  narrative_strength_score: 50
+                },
+                momentum: {
+                  leading_participant_id: "bos",
+                  score: 50,
+                  direction: "flat",
+                  summary: "Generic fallback momentum",
+                  reason_codes: []
+                },
+                live_predictions: {
+                  win_probabilities: [
+                    {
+                      participant_id: "bos",
+                      probability: 0.5
+                    },
+                    {
+                      participant_id: "gsw",
+                      probability: 0.5
+                    }
+                  ],
+                  win_probability_changes: [
+                    {
+                      participant_id: "bos",
+                      last_interval: 0
+                    },
+                    {
+                      participant_id: "gsw",
+                      last_interval: 0
+                    }
+                  ],
+                  comeback_probability: 0.5,
+                  upset_probability: 0.5,
+                  draw_probability: 0,
+                  overtime_or_tiebreak_probability: 0.1,
+                  likely_next_major_event: "score",
+                  expected_remaining_duration_minutes: 2,
+                  prediction_confidence: 1
+                },
+                summary: {
+                  headline: "Match in progress",
+                  short_byte: "Match in progress",
+                  key_points: []
+                },
+                freshness: {
+                  generated_at: "2026-06-16T20:06:05.000Z",
+                  source_observation_time: null,
+                  age_seconds: 0
+                },
+                verification: {
+                  status: "verified",
+                  confidence: 1,
+                  warnings: []
+                }
+              }
+            ],
+            failed_matches: []
+          },
+          warnings: []
+        });
+      }
+
+      return baseFetch(input, init);
+    }) as typeof fetch;
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", {
+          name: "Boston Celtics vs Golden State Warriors"
+        })
+      ).toBeInTheDocument();
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: "Refresh live state" })
+    );
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/events/live/state"),
+        expect.anything()
+      );
+    });
+
+    expect(screen.getByText("102-100")).toBeInTheDocument();
+  });
+
   it("refetches upcoming events when the day window changes", async () => {
     const user = userEvent.setup();
     render(<App />);

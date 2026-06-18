@@ -51,7 +51,15 @@ export const matchContextSchema = z.object({
 
 export const liveStateSchema = z.object({
   match_id: z.string(),
-  match_status: z.enum(["live", "completed", "unverified"]),
+  match_status: z.enum([
+    "live",
+    "paused",
+    "suspended",
+    "completed",
+    "postponed",
+    "cancelled",
+    "unverified"
+  ]),
   period: z.object({
     code: z.string(),
     display: z.string()
@@ -152,7 +160,13 @@ export const liveStateSchema = z.object({
     is_under_review: z.boolean(),
     is_injury_delay: z.boolean(),
     is_weather_delay: z.boolean(),
-    is_overtime_or_tiebreak: z.boolean()
+    is_overtime_or_tiebreak: z.boolean(),
+    is_paused: z.boolean(),
+    is_postponed: z.boolean(),
+    is_cancelled: z.boolean(),
+    is_suspended: z.boolean(),
+    pause_reason: z.string().nullable(),
+    status_reason: z.string().nullable()
   }),
   excitement: z.object({
     aggregate_score: z.number(),
@@ -171,6 +185,36 @@ export const liveStateSchema = z.object({
     score: z.number(),
     level: z.string()
   }),
+  watchability: z
+    .object({
+      current_score: z.number().min(0).max(100),
+      tension_score: z.number().min(0).max(100),
+      scoring_imminence_score: z.number().min(0).max(100),
+      swing_potential_score: z.number().min(0).max(100),
+      state_clarity_score: z.number().min(0).max(100),
+      evidence_strength_score: z.number().min(0).max(100)
+    })
+    .default({
+      current_score: 50,
+      tension_score: 50,
+      scoring_imminence_score: 50,
+      swing_potential_score: 50,
+      state_clarity_score: 50,
+      evidence_strength_score: 50
+    }),
+  cross_phase_scores: z
+    .object({
+      stakes_score: z.number().min(0).max(100),
+      star_power_score: z.number().min(0).max(100),
+      upset_potential_score: z.number().min(0).max(100),
+      narrative_strength_score: z.number().min(0).max(100)
+    })
+    .default({
+      stakes_score: 50,
+      star_power_score: 50,
+      upset_potential_score: 50,
+      narrative_strength_score: 50
+    }),
   momentum: z.object({
     leading_participant_id: z.string(),
     score: z.number(),
@@ -260,6 +304,36 @@ export const upcomingIntelligenceSchema = z.object({
   summary: z.string(),
   projected_competitiveness: z.number().min(0).max(100),
   watch_reasons: z.array(z.string()),
+  cross_phase_scores: z
+    .object({
+      stakes_score: z.number().min(0).max(100),
+      star_power_score: z.number().min(0).max(100),
+      upset_potential_score: z.number().min(0).max(100),
+      narrative_strength_score: z.number().min(0).max(100)
+    })
+    .default({
+      stakes_score: 50,
+      star_power_score: 50,
+      upset_potential_score: 50,
+      narrative_strength_score: 50
+    }),
+  audience_signals: z
+    .object({
+      audience_interest_score: z.number().min(0).max(100),
+      stakes_score: z.number().min(0).max(100),
+      star_power_score: z.number().min(0).max(100),
+      volatility_score: z.number().min(0).max(100),
+      upset_potential_score: z.number().min(0).max(100),
+      narrative_strength_score: z.number().min(0).max(100)
+    })
+    .default({
+      audience_interest_score: 50,
+      stakes_score: 50,
+      star_power_score: 50,
+      volatility_score: 50,
+      upset_potential_score: 50,
+      narrative_strength_score: 50
+    }),
   win_probabilities: z.array(
     z.object({
       participant_id: z.string(),

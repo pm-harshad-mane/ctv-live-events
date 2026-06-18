@@ -2,7 +2,7 @@ import type { ProviderDebugInfo } from "../../../shared/types/api";
 import type {
   StructuredResponseRequest,
   StructuredResponseTransport
-} from "../../openai/transport";
+} from "../../structured-output/types";
 import {
   StructuredSearchLiveEventDiscoveryProvider,
   StructuredSearchLiveEventLookupProvider,

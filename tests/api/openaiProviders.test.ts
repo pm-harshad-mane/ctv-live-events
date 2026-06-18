@@ -66,6 +66,7 @@ describe("OpenAI providers", () => {
       "discovering currently live sports matches"
     );
     expect(request.instructions).toContain("Use web search");
+    expect(request.maxOutputTokens).toBe(12000);
     expect(request.toolChoice).toBe("auto");
     expect(request.tools?.[0]?.type).toBe("web_search");
     expect(request.tools?.[0]?.external_web_access).toBe(true);
@@ -113,6 +114,7 @@ describe("OpenAI providers", () => {
     expect(request.instructions).toContain(
       "Do not return static match context"
     );
+    expect(request.maxOutputTokens).toBe(8000);
     expect(request.toolChoice).toBe("auto");
     expect(request.tools?.[0]?.type).toBe("web_search");
     expect(request.tools?.[0]?.external_web_access).toBe(true);

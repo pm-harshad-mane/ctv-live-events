@@ -20,6 +20,20 @@ export const UpcomingCard = ({
   onSelect
 }: UpcomingCardProps) => {
   const participants = event.context.participants;
+  const audienceSignals = event.upcoming_intelligence.audience_signals ?? {
+    audience_interest_score: 50,
+    stakes_score: 50,
+    star_power_score: 50,
+    volatility_score: 50,
+    upset_potential_score: 50,
+    narrative_strength_score: 50
+  };
+  const crossPhaseScores = event.upcoming_intelligence.cross_phase_scores ?? {
+    stakes_score: audienceSignals.stakes_score,
+    star_power_score: audienceSignals.star_power_score,
+    upset_potential_score: audienceSignals.upset_potential_score,
+    narrative_strength_score: audienceSignals.narrative_strength_score
+  };
   const startDetails = getUpcomingStartDetails(
     event.context.match.scheduled_start_time
   );
@@ -34,6 +48,36 @@ export const UpcomingCard = ({
         )?.name ?? prediction.participant_id
     }))
     .sort((left, right) => right.probability - left.probability);
+  const scoreBlocks = [
+    {
+      label: "Audience interest",
+      value: audienceSignals.audience_interest_score
+    },
+    {
+      label: "Competitiveness",
+      value: event.upcoming_intelligence.projected_competitiveness
+    },
+    {
+      label: "Stakes",
+      value: crossPhaseScores.stakes_score
+    },
+    {
+      label: "Star power",
+      value: crossPhaseScores.star_power_score
+    },
+    {
+      label: "Volatility",
+      value: audienceSignals.volatility_score
+    },
+    {
+      label: "Upset",
+      value: crossPhaseScores.upset_potential_score
+    },
+    {
+      label: "Narrative",
+      value: crossPhaseScores.narrative_strength_score
+    }
+  ];
 
   return (
     <article
@@ -55,14 +99,21 @@ export const UpcomingCard = ({
           </div>
         ))}
       </div>
-      <div className="event-card__metrics">
-        <div className="event-card__metric">
-          <span>Competitiveness</span>
-          <strong>
-            {event.upcoming_intelligence.projected_competitiveness}
-          </strong>
+      <div className="event-card__score-stack">
+        <div className="event-card__score-grid event-card__score-grid--dense">
+          {scoreBlocks.map((score) => (
+            <div key={score.label} className="event-card__metric">
+              <span>{score.label}</span>
+              <strong>{score.value}</strong>
+            </div>
+          ))}
         </div>
-        <div className="event-card__metric">
+        <div className="event-card__score-grid">
+          <div className="event-card__metric">
+            <span>Start status</span>
+            <strong>{startDetails.isYetToStartToday ? "Yet to start" : "Scheduled"}</strong>
+          </div>
+          <div className="event-card__metric">
           <span>
             {startDetails.isYetToStartToday ? "Time left" : "Start time"}
           </span>
@@ -76,6 +127,7 @@ export const UpcomingCard = ({
                   minute: "2-digit"
                 })}
           </strong>
+        </div>
         </div>
       </div>
       <p className="event-card__upcoming-headline">

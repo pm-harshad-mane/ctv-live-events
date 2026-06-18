@@ -21,12 +21,12 @@ import {
   buildStateRefreshPrompt,
   buildUpcomingLookupPrompt,
   buildUpcomingPrompt
-} from "../../openai/prompts";
-import { openAiSchemas } from "../../openai/schemas";
+} from "../../structured-output/prompts";
+import { structuredOutputSchemas } from "../../structured-output/schemas";
 import type {
   StructuredResponseRequest,
   StructuredResponseTransport
-} from "../../openai/transport";
+} from "../../structured-output/types";
 import type {
   LiveEventDiscoveryProvider,
   LiveEventLookupProvider,
@@ -107,10 +107,10 @@ const hasVerifiedLiveSignal = (state: LiveState): boolean => {
 const assessLiveStateQuality = (
   state: LiveState
 ): { accepted: boolean; reason?: string } => {
-  if (state.match_status !== "live") {
+  if (!["live", "paused", "suspended"].includes(state.match_status)) {
     return {
       accepted: false,
-      reason: "Match was not verified as currently live."
+      reason: `Match was not verified as currently live (status=${state.match_status}).`
     };
   }
 
@@ -165,6 +165,9 @@ const assertObject = (
   return value as Record<string, unknown>;
 };
 
+const optionalObject = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
 const normalizeUnitInterval = (value: unknown): unknown => {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return value;
@@ -183,6 +186,26 @@ const normalizeUnitInterval = (value: unknown): unknown => {
   }
 
   return value;
+};
+
+const normalizeHundredPointScore = (value: unknown): unknown => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return value;
+  }
+
+  if (value >= 0 && value <= 1) {
+    return Math.round(value * 100);
+  }
+
+  if (value < 0) {
+    return 0;
+  }
+
+  if (value > 100) {
+    return 100;
+  }
+
+  return Math.round(value);
 };
 
 const normalizeProbabilityEntryArray = (
@@ -216,9 +239,98 @@ const normalizeLiveStateCandidate = (
     candidate.verification,
     responseObjectLabel
   );
+  const specialState = assertObject(candidate.special_state, responseObjectLabel);
+  const excitement = optionalObject(candidate.excitement);
+  const criticality = optionalObject(candidate.criticality);
+  const competitiveBalance = optionalObject(candidate.competitive_balance);
+  const watchability = optionalObject(candidate.watchability);
+  const crossPhaseScores = optionalObject(candidate.cross_phase_scores);
+  const momentum = optionalObject(candidate.momentum);
 
   return {
     ...candidate,
+    excitement: {
+      ...excitement,
+      aggregate_score: normalizeHundredPointScore(excitement.aggregate_score ?? 50),
+      current_excitement: normalizeHundredPointScore(
+        excitement.current_excitement ?? 50
+      ),
+      recent_excitement: normalizeHundredPointScore(
+        excitement.recent_excitement ?? 50
+      ),
+      expected_remaining_excitement: normalizeHundredPointScore(
+        excitement.expected_remaining_excitement ?? 50
+      )
+    },
+    criticality: {
+      ...criticality,
+      score: normalizeHundredPointScore(criticality.score ?? 50)
+    },
+    competitive_balance: {
+      ...competitiveBalance,
+      score: normalizeHundredPointScore(competitiveBalance.score ?? 50)
+    },
+    watchability: {
+      ...watchability,
+      current_score: normalizeHundredPointScore(watchability.current_score ?? 50),
+      tension_score: normalizeHundredPointScore(watchability.tension_score ?? 50),
+      scoring_imminence_score: normalizeHundredPointScore(
+        watchability.scoring_imminence_score ?? 50
+      ),
+      swing_potential_score: normalizeHundredPointScore(
+        watchability.swing_potential_score ?? 50
+      ),
+      state_clarity_score: normalizeHundredPointScore(
+        watchability.state_clarity_score ?? 50
+      ),
+      evidence_strength_score: normalizeHundredPointScore(
+        watchability.evidence_strength_score ?? 50
+      )
+    },
+    cross_phase_scores: {
+      ...crossPhaseScores,
+      stakes_score: normalizeHundredPointScore(crossPhaseScores.stakes_score ?? 50),
+      star_power_score: normalizeHundredPointScore(
+        crossPhaseScores.star_power_score ?? 50
+      ),
+      upset_potential_score: normalizeHundredPointScore(
+        crossPhaseScores.upset_potential_score ?? 50
+      ),
+      narrative_strength_score: normalizeHundredPointScore(
+        crossPhaseScores.narrative_strength_score ?? 50
+      )
+    },
+    momentum: {
+      ...momentum,
+      score: normalizeHundredPointScore(momentum.score ?? 50)
+    },
+    special_state: {
+      is_timeout: Boolean(specialState.is_timeout),
+      is_under_review: Boolean(specialState.is_under_review),
+      is_injury_delay: Boolean(specialState.is_injury_delay),
+      is_weather_delay: Boolean(specialState.is_weather_delay),
+      is_overtime_or_tiebreak: Boolean(specialState.is_overtime_or_tiebreak),
+      is_paused:
+        "is_paused" in specialState
+          ? Boolean(specialState.is_paused)
+          : Boolean(
+              specialState.is_timeout ||
+                specialState.is_under_review ||
+                specialState.is_injury_delay ||
+                specialState.is_weather_delay
+            ),
+      is_postponed: Boolean(specialState.is_postponed),
+      is_cancelled: Boolean(specialState.is_cancelled),
+      is_suspended: Boolean(specialState.is_suspended),
+      pause_reason:
+        typeof specialState.pause_reason === "string"
+          ? specialState.pause_reason
+          : null,
+      status_reason:
+        typeof specialState.status_reason === "string"
+          ? specialState.status_reason
+          : null
+    },
     verification: {
       ...verification,
       confidence: normalizeUnitInterval(verification.confidence)
@@ -261,11 +373,54 @@ const normalizeUpcomingEventCandidate = (
     candidate.upcoming_intelligence,
     responseObjectLabel
   );
+  const audienceSignals = optionalObject(intelligence.audience_signals);
+  const crossPhaseScores = optionalObject(intelligence.cross_phase_scores);
+  const projectedCompetitiveness =
+    normalizeHundredPointScore(intelligence.projected_competitiveness ?? 50);
 
   return {
     ...candidate,
     upcoming_intelligence: {
       ...intelligence,
+      projected_competitiveness: projectedCompetitiveness,
+      audience_signals: {
+        ...audienceSignals,
+        audience_interest_score: normalizeHundredPointScore(
+          audienceSignals.audience_interest_score ?? 50
+        ),
+        stakes_score: normalizeHundredPointScore(audienceSignals.stakes_score ?? 50),
+        star_power_score: normalizeHundredPointScore(
+          audienceSignals.star_power_score ?? 50
+        ),
+        volatility_score: normalizeHundredPointScore(
+          audienceSignals.volatility_score ?? 50
+        ),
+        upset_potential_score: normalizeHundredPointScore(
+          audienceSignals.upset_potential_score ?? 50
+        ),
+        narrative_strength_score: normalizeHundredPointScore(
+          audienceSignals.narrative_strength_score ?? 50
+        )
+      },
+      cross_phase_scores: {
+        ...crossPhaseScores,
+        stakes_score: normalizeHundredPointScore(
+          crossPhaseScores.stakes_score ?? audienceSignals.stakes_score ?? 50
+        ),
+        star_power_score: normalizeHundredPointScore(
+          crossPhaseScores.star_power_score ?? audienceSignals.star_power_score ?? 50
+        ),
+        upset_potential_score: normalizeHundredPointScore(
+          crossPhaseScores.upset_potential_score ??
+            audienceSignals.upset_potential_score ??
+            50
+        ),
+        narrative_strength_score: normalizeHundredPointScore(
+          crossPhaseScores.narrative_strength_score ??
+            audienceSignals.narrative_strength_score ??
+            50
+        )
+      },
       win_probabilities: normalizeProbabilityEntryArray(
         intelligence.win_probabilities,
         "probability",
@@ -411,7 +566,8 @@ export class StructuredSearchLiveEventDiscoveryProvider implements LiveEventDisc
       await this.transport.createStructuredResponse({
         ...buildDiscoveryPrompt(input),
         ...this.flavor.buildSearchRequest(input.region),
-        schema: openAiSchemas.discovery
+        schema: structuredOutputSchemas.discovery,
+        maxOutputTokens: 12000
       }),
       this.flavor.responseObjectLabel
     );
@@ -500,7 +656,8 @@ export class StructuredSearchLiveEventStateProvider implements LiveEventStatePro
       await this.transport.createStructuredResponse({
         ...buildStateRefreshPrompt(input),
         ...this.flavor.buildSearchRequest(input.region),
-        schema: openAiSchemas.stateRefresh
+        schema: structuredOutputSchemas.stateRefresh,
+        maxOutputTokens: 8000
       }),
       this.flavor.responseObjectLabel
     );
@@ -586,7 +743,7 @@ export class StructuredSearchLiveEventLookupProvider implements LiveEventLookupP
       await this.transport.createStructuredResponse({
         ...buildContextLookupPrompt(matchId),
         ...this.flavor.buildSearchRequest("global"),
-        schema: openAiSchemas.contextLookup
+        schema: structuredOutputSchemas.contextLookup
       }),
       this.flavor.responseObjectLabel
     );
@@ -604,7 +761,8 @@ export class StructuredSearchLiveEventLookupProvider implements LiveEventLookupP
       await this.transport.createStructuredResponse({
         ...buildStateLookupPrompt(matchId),
         ...this.flavor.buildSearchRequest("global"),
-        schema: openAiSchemas.stateLookup
+        schema: structuredOutputSchemas.stateLookup,
+        maxOutputTokens: 8000
       }),
       this.flavor.responseObjectLabel
     );
@@ -629,7 +787,8 @@ export class StructuredSearchLiveEventLookupProvider implements LiveEventLookupP
       await this.transport.createStructuredResponse({
         ...buildLiveLookupPrompt(matchId),
         ...this.flavor.buildSearchRequest("global"),
-        schema: openAiSchemas.liveLookup
+        schema: structuredOutputSchemas.liveLookup,
+        maxOutputTokens: 12000
       }),
       this.flavor.responseObjectLabel
     );
@@ -664,7 +823,7 @@ export class StructuredSearchUpcomingEventProvider implements UpcomingEventProvi
       await this.transport.createStructuredResponse({
         ...buildUpcomingPrompt(input),
         ...this.flavor.buildSearchRequest(input.region),
-        schema: openAiSchemas.upcoming
+        schema: structuredOutputSchemas.upcoming
       }),
       this.flavor.responseObjectLabel
     );
@@ -727,7 +886,7 @@ export class StructuredSearchUpcomingEventProvider implements UpcomingEventProvi
       await this.transport.createStructuredResponse({
         ...buildUpcomingLookupPrompt(matchId),
         ...this.flavor.buildSearchRequest("global"),
-        schema: openAiSchemas.upcomingLookup
+        schema: structuredOutputSchemas.upcomingLookup
       }),
       this.flavor.responseObjectLabel
     );

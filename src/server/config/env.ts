@@ -112,6 +112,9 @@ export type AppEnv = {
   aiEnabled: boolean;
   aiDisabledRetryAfterSeconds: number;
   useMockData: boolean;
+  storeAiResponses: boolean;
+  aiResponseLogDir: string;
+  disableAiOutputTokenLimits: boolean;
 };
 
 export const getEnv = (): AppEnv => {
@@ -196,6 +199,13 @@ export const getEnv = (): AppEnv => {
       process.env.AI_DISABLED_RETRY_AFTER_SECONDS,
       300
     ),
-    useMockData
+    useMockData,
+    storeAiResponses: booleanValue(process.env.STORE_AI_RESPONSES, false),
+    aiResponseLogDir:
+      process.env.AI_RESPONSE_LOG_DIR?.trim() || "logs/ai-responses",
+    disableAiOutputTokenLimits: booleanValue(
+      process.env.DISABLE_AI_OUTPUT_TOKEN_LIMITS,
+      false
+    )
   };
 };

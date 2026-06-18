@@ -225,6 +225,91 @@ const DetailField = ({
   </p>
 );
 
+const ScoreGrid = ({
+  title,
+  scores,
+  className
+}: {
+  title: string;
+  scores: Array<{ label: string; value: string | number; description?: string }>;
+  className?: string;
+}) => (
+  <section className={`detail-card ${className ?? ""}`.trim()}>
+    <h3>{title}</h3>
+    <div className="detail-score-grid">
+      {scores.map((score) => (
+        <div key={score.label} className="detail-score-tile">
+          <TooltipLabel
+            label={score.label}
+            description={score.description ?? getAttributeHelp(score.label)}
+          />
+          <strong>{score.value}</strong>
+        </div>
+      ))}
+    </div>
+  </section>
+);
+
+const ProbabilityCard = ({
+  title,
+  probabilities,
+  context,
+  changes,
+  className
+}: {
+  title: string;
+  probabilities: Array<{ participant_id: string; probability: number }>;
+  context: MatchContext;
+  changes?: Array<{ participant_id: string; last_interval: number }>;
+  className?: string;
+}) => {
+  const changeByParticipant = new Map(
+    (changes ?? []).map((item) => [item.participant_id, item.last_interval])
+  );
+
+  return (
+    <section
+      className={`detail-card ${className ?? ""}`.trim()}
+      aria-label={`${title}. ${getAttributeHelp("Win probabilities")}`}
+    >
+      <h3>{title}</h3>
+      <div className="detail-score-grid detail-score-grid--probability">
+        {probabilities.map((prediction) => {
+          const participantLabel = formatParticipantName(
+            context,
+            prediction.participant_id
+          );
+          const change = changeByParticipant.get(prediction.participant_id);
+
+          return (
+            <div
+              key={prediction.participant_id}
+              className="detail-score-tile detail-score-tile--probability"
+            >
+              <span className="sr-only">
+                {participantLabel}: {formatProbability(prediction.probability)}
+              </span>
+              <TooltipLabel
+                label={participantLabel}
+                description={`Current win probability for ${participantLabel}.`}
+              />
+              <strong>{formatProbability(prediction.probability)}</strong>
+              {typeof change === "number" ? (
+                <span className="detail-score-tile__meta">
+                  <span className="sr-only">
+                    {participantLabel}: {formatSignedProbabilityChange(change)}
+                  </span>
+                  Recent change {formatSignedProbabilityChange(change)}
+                </span>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+};
+
 const formatSportSpecificValue = (
   key: string,
   value: unknown,
@@ -398,8 +483,130 @@ export const DetailPanel = ({
     const participantName = (
       participantId: string | null | undefined
     ): string => formatParticipantName(liveMatchDetail.context, participantId);
+    const watchability = liveMatchDetail.liveState.watchability ?? {
+      current_score: 50,
+      tension_score: 50,
+      scoring_imminence_score: 50,
+      swing_potential_score: 50,
+      state_clarity_score: 50,
+      evidence_strength_score: 50
+    };
+    const crossPhaseScores = liveMatchDetail.liveState.cross_phase_scores ?? {
+      stakes_score: 50,
+      star_power_score: 50,
+      upset_potential_score: 50,
+      narrative_strength_score: 50
+    };
+    const liveScoreSignals = [
+      {
+        label: "Watchability",
+        value: watchability.current_score,
+        description:
+          "An overall live score for how worth-watching the match is right now."
+      },
+      {
+        label: "Tension",
+        value: watchability.tension_score,
+        description: "How tense or high-pressure the current live moment is."
+      },
+      {
+        label: "Scoring imminence",
+        value: watchability.scoring_imminence_score,
+        description:
+          "How likely a score-changing event feels in the near term."
+      },
+      {
+        label: "Swing potential",
+        value: watchability.swing_potential_score,
+        description:
+          "How likely the current match state is to swing materially soon."
+      },
+      {
+        label: "Clarity",
+        value: watchability.state_clarity_score,
+        description:
+          "How clear and interpretable the current match state is for consumers."
+      },
+      {
+        label: "Evidence",
+        value: watchability.evidence_strength_score,
+        description:
+          "How strong the underlying evidence is for this live-state read."
+      }
+    ];
+    const liveDurableScores = [
+      {
+        label: "Stakes",
+        value: crossPhaseScores.stakes_score
+      },
+      {
+        label: "Star power",
+        value: crossPhaseScores.star_power_score
+      },
+      {
+        label: "Upset",
+        value: crossPhaseScores.upset_potential_score
+      },
+      {
+        label: "Narrative",
+        value: crossPhaseScores.narrative_strength_score
+      },
+      {
+        label: "Excitement",
+        value: liveMatchDetail.liveState.excitement.aggregate_score
+      },
+      {
+        label: "Criticality",
+        value: liveMatchDetail.liveState.criticality.score
+      },
+      {
+        label: "Competitive balance",
+        value: liveMatchDetail.liveState.competitive_balance.score
+      },
+      {
+        label: "Momentum score",
+        value: liveMatchDetail.liveState.momentum.score
+      }
+    ];
+    const liveForecastScores = [
+      {
+        label: "Comeback probability",
+        value: formatProbability(
+          liveMatchDetail.liveState.live_predictions.comeback_probability
+        )
+      },
+      {
+        label: "Upset probability",
+        value: formatProbability(
+          liveMatchDetail.liveState.live_predictions.upset_probability
+        )
+      },
+      {
+        label: "Draw probability",
+        value: formatProbability(
+          liveMatchDetail.liveState.live_predictions.draw_probability
+        )
+      },
+      {
+        label: "Overtime or tiebreak probability",
+        value: formatProbability(
+          liveMatchDetail.liveState.live_predictions
+            .overtime_or_tiebreak_probability
+        )
+      },
+      {
+        label: "Expected remaining duration",
+        value: `${liveMatchDetail.liveState.live_predictions.expected_remaining_duration_minutes}m`
+      },
+      {
+        label: "Prediction confidence",
+        value: formatProbability(
+          liveMatchDetail.liveState.live_predictions.prediction_confidence
+        )
+      }
+    ];
     const activeFlags = Object.entries(liveMatchDetail.liveState.special_state)
-      .filter(([, enabled]) => enabled)
+      .filter(([, enabled]) => typeof enabled === "boolean" && enabled)
       .map(([key]) => humanizeKey(key.replace(/^is_/, "")));
     const uniqueReasonCodes = Array.from(
       new Set([
@@ -469,6 +676,40 @@ export const DetailPanel = ({
           </div>
 
           <div className="detail-grid">
+            <div className="detail-grid__row detail-grid__row--two-up">
+              <ProbabilityCard
+                title="Win probabilities"
+                probabilities={
+                  liveMatchDetail.liveState.live_predictions.win_probabilities
+                }
+                changes={
+                  liveMatchDetail.liveState.live_predictions
+                    .win_probability_changes
+                }
+                context={liveMatchDetail.context}
+                className="detail-grid__featured-card"
+              />
+              <ScoreGrid
+                title="Live score signals"
+                scores={liveScoreSignals}
+                className="detail-grid__featured-card"
+              />
+            </div>
+
+            <div className="detail-grid__row detail-grid__row--two-up">
+              <ScoreGrid
+                title="Durable match scores"
+                scores={liveDurableScores}
+                className="detail-grid__featured-card"
+              />
+
+              <ScoreGrid
+                title="Forecast scores"
+                scores={liveForecastScores}
+                className="detail-grid__featured-card"
+              />
+            </div>
+
             <section className="detail-card">
               <h3>Live pulse</h3>
               <p className="detail-modal__copy">
@@ -597,114 +838,6 @@ export const DetailPanel = ({
             </section>
 
             <section className="detail-card">
-              <h3>Competition scores</h3>
-              <div className="detail-stat-list">
-                <DetailField label="Excitement">
-                  {liveMatchDetail.liveState.excitement.aggregate_score} (
-                  {liveMatchDetail.liveState.excitement.level})
-                </DetailField>
-                <DetailField label="Current excitement">
-                  {liveMatchDetail.liveState.excitement.current_excitement}
-                </DetailField>
-                <DetailField label="Recent excitement">
-                  {liveMatchDetail.liveState.excitement.recent_excitement}
-                </DetailField>
-                <DetailField label="Expected remaining excitement">
-                  {
-                    liveMatchDetail.liveState.excitement
-                      .expected_remaining_excitement
-                  }
-                </DetailField>
-                <DetailField label="Criticality">
-                  {liveMatchDetail.liveState.criticality.score} (
-                  {liveMatchDetail.liveState.criticality.level})
-                </DetailField>
-                <DetailField label="Competitive balance">
-                  {liveMatchDetail.liveState.competitive_balance.score} (
-                  {liveMatchDetail.liveState.competitive_balance.level})
-                </DetailField>
-                <DetailField label="Momentum score">
-                  {liveMatchDetail.liveState.momentum.score} (
-                  {liveMatchDetail.liveState.momentum.direction}) for{" "}
-                  {participantName(
-                    liveMatchDetail.liveState.momentum.leading_participant_id
-                  )}
-                </DetailField>
-              </div>
-            </section>
-
-            <section className="detail-card">
-              <h3>Predictions</h3>
-              <div className="detail-stat-list">
-                <DetailField label="Comeback probability">
-                  {formatProbability(
-                    liveMatchDetail.liveState.live_predictions
-                      .comeback_probability
-                  )}
-                </DetailField>
-                <DetailField label="Upset probability">
-                  {formatProbability(
-                    liveMatchDetail.liveState.live_predictions.upset_probability
-                  )}
-                </DetailField>
-                <DetailField label="Draw probability">
-                  {formatProbability(
-                    liveMatchDetail.liveState.live_predictions.draw_probability
-                  )}
-                </DetailField>
-                <DetailField label="Overtime or tiebreak probability">
-                  {formatProbability(
-                    liveMatchDetail.liveState.live_predictions
-                      .overtime_or_tiebreak_probability
-                  )}
-                </DetailField>
-                <DetailField label="Expected remaining duration">
-                  {
-                    liveMatchDetail.liveState.live_predictions
-                      .expected_remaining_duration_minutes
-                  }{" "}
-                  minutes
-                </DetailField>
-                <DetailField label="Prediction confidence">
-                  {formatProbability(
-                    liveMatchDetail.liveState.live_predictions
-                      .prediction_confidence
-                  )}
-                </DetailField>
-              </div>
-              <div className="detail-split">
-                <div>
-                  <h4>Win probabilities</h4>
-                  <ul className="event-card__points">
-                    {liveMatchDetail.liveState.live_predictions.win_probabilities.map(
-                      (prediction) => (
-                        <li key={prediction.participant_id}>
-                          {participantName(prediction.participant_id)}:{" "}
-                          {formatProbability(prediction.probability)}
-                        </li>
-                      )
-                    )}
-                  </ul>
-                </div>
-                <div>
-                  <h4>Recent probability change</h4>
-                  <ul className="event-card__points">
-                    {liveMatchDetail.liveState.live_predictions.win_probability_changes.map(
-                      (prediction) => (
-                        <li key={prediction.participant_id}>
-                          {participantName(prediction.participant_id)}:{" "}
-                          {formatSignedProbabilityChange(
-                            prediction.last_interval
-                          )}
-                        </li>
-                      )
-                    )}
-                  </ul>
-                </div>
-              </div>
-            </section>
-
-            <section className="detail-card">
               <h3>Recent sequence</h3>
               <div className="detail-stat-list">
                 <DetailField label="Last event id">
@@ -779,29 +912,28 @@ export const DetailPanel = ({
                   </ul>
                 </div>
               </div>
-              <div className="detail-sport-specific">
-                <h4>Sport-specific state</h4>
-                <div className="detail-sport-specific__grid">
-                  {Object.entries(liveMatchDetail.liveState.sport_specific)
-                    .filter(
-                      ([, value]) => value !== null && value !== undefined
-                    )
-                    .map(([key, value]) => (
-                      <div key={key} className="detail-sport-specific__item">
-                        <TooltipLabel
-                          label={humanizeKey(key)}
-                          description={getSportSpecificHelp(key)}
-                        />
-                        <strong>
-                          {formatSportSpecificValue(
-                            key,
-                            value,
-                            participantName
-                          )}
-                        </strong>
-                      </div>
-                    ))}
-                </div>
+            </section>
+
+            <section className="detail-card">
+              <h3>Sport-specific state</h3>
+              <div className="detail-sport-specific__grid">
+                {Object.entries(liveMatchDetail.liveState.sport_specific)
+                  .filter(([, value]) => value !== null && value !== undefined)
+                  .map(([key, value]) => (
+                    <div key={key} className="detail-sport-specific__item">
+                      <TooltipLabel
+                        label={humanizeKey(key)}
+                        description={getSportSpecificHelp(key)}
+                      />
+                      <strong>
+                        {formatSportSpecificValue(
+                          key,
+                          value,
+                          participantName
+                        )}
+                      </strong>
+                    </div>
+                  ))}
               </div>
             </section>
 
@@ -873,8 +1005,82 @@ export const DetailPanel = ({
         </div>
 
         <div className="detail-grid">
+          {(() => {
+            const event = upcomingEvent;
+            if (!event) {
+              return null;
+            }
+
+            const audienceSignals =
+              event.upcoming_intelligence.audience_signals ?? {
+                audience_interest_score: 50,
+                stakes_score: 50,
+                star_power_score: 50,
+                volatility_score: 50,
+                upset_potential_score: 50,
+                narrative_strength_score: 50
+              };
+            const crossPhaseScores =
+              event.upcoming_intelligence.cross_phase_scores ?? {
+                stakes_score: audienceSignals.stakes_score,
+                star_power_score: audienceSignals.star_power_score,
+                upset_potential_score: audienceSignals.upset_potential_score,
+                narrative_strength_score:
+                  audienceSignals.narrative_strength_score
+              };
+
+            return (
+              <div className="detail-grid__row detail-grid__row--two-up">
+                <ProbabilityCard
+                  title="Win probabilities"
+                  probabilities={event.upcoming_intelligence.win_probabilities}
+                  context={event.context}
+                  className="detail-grid__featured-card"
+                />
+                <ScoreGrid
+                  title="Audience and ranking scores"
+                  scores={[
+                    {
+                      label: "Audience interest",
+                      value: audienceSignals.audience_interest_score
+                    },
+                    {
+                      label: "Projected competitiveness",
+                      value:
+                        event.upcoming_intelligence.projected_competitiveness
+                    },
+                    {
+                      label: "Volatility",
+                      value: audienceSignals.volatility_score
+                    },
+                    {
+                      label: "Stakes",
+                      value: crossPhaseScores.stakes_score
+                    },
+                    {
+                      label: "Star power",
+                      value: crossPhaseScores.star_power_score
+                    },
+                    {
+                      label: "Upset",
+                      value: crossPhaseScores.upset_potential_score
+                    },
+                    {
+                      label: "Narrative",
+                      value: crossPhaseScores.narrative_strength_score
+                    }
+                  ]}
+                  className="detail-grid__featured-card"
+                />
+              </div>
+            );
+          })()}
+
           <section className="detail-card">
             <h3>Why it matters</h3>
+            <p className="detail-modal__copy">
+              {upcomingEvent?.context.pre_match_intelligence.summary}
+            </p>
             <ul className="event-card__points">
               {upcomingEvent?.upcoming_intelligence.watch_reasons.map(
                 (reason) => (
@@ -909,51 +1115,12 @@ export const DetailPanel = ({
           </section>
 
           <section className="detail-card">
-            <h3>Pre-match forecast</h3>
+            <h3>Forecast metadata</h3>
             <div className="detail-stat-list">
-              <DetailField label="Projected competitiveness">
-                {upcomingEvent?.upcoming_intelligence.projected_competitiveness}
-              </DetailField>
-              <DetailField label="Context competitiveness">
-                {
-                  upcomingEvent?.context.pre_match_intelligence
-                    .expected_competitiveness
-                }
-              </DetailField>
               <DetailField label="Generated at">
                 {upcomingEvent?.freshness.generated_at}
               </DetailField>
             </div>
-          </section>
-
-          <section className="detail-card">
-            <h3>
-              <TooltipLabel
-                label="Win probabilities"
-                description={getAttributeHelp("Win probabilities")}
-              />
-            </h3>
-            <ul className="event-card__points">
-              {upcomingEvent?.upcoming_intelligence.win_probabilities.map(
-                (prediction) => (
-                  <li key={prediction.participant_id}>
-                    {formatParticipantName(
-                      upcomingEvent.context,
-                      prediction.participant_id
-                    )}
-                    : {formatProbability(prediction.probability)}
-                  </li>
-                )
-              )}
-            </ul>
-          </section>
-
-          <section className="detail-card">
-            <h3>Pre-match intelligence</h3>
-            <ul className="event-card__points">
-              <li>{upcomingEvent?.context.pre_match_intelligence.headline}</li>
-              <li>{upcomingEvent?.context.pre_match_intelligence.summary}</li>
-            </ul>
           </section>
         </div>
       </section>

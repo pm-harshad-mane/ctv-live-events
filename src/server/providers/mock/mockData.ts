@@ -22,6 +22,26 @@ type UpcomingSeed = {
   upcoming_intelligence: UpcomingEvent["upcoming_intelligence"];
 };
 
+const buildWatchability = (
+  values: LiveState["watchability"]
+): LiveState["watchability"] => values;
+
+const buildCrossPhaseScores = <
+  T extends
+    | LiveState["cross_phase_scores"]
+    | UpcomingEvent["upcoming_intelligence"]["cross_phase_scores"]
+>(
+  values: T
+): T => values;
+
+const buildAudienceSignals = (
+  values: UpcomingEvent["upcoming_intelligence"]["audience_signals"]
+): UpcomingEvent["upcoming_intelligence"]["audience_signals"] => values;
+
+const buildUpcomingIntelligence = (
+  intelligence: UpcomingEvent["upcoming_intelligence"]
+): UpcomingEvent["upcoming_intelligence"] => intelligence;
+
 const nowIso = (): string => new Date().toISOString();
 
 const matchesRegion = (seedRegion: string, requestedRegion: string): boolean =>
@@ -373,10 +393,11 @@ const buildBasketballState = (
 ): LiveState => {
   const remainingSeconds = Math.max(24, 720 - minuteOffset * 11);
   const leader = leadingParticipantId(seed, homeScore, awayScore);
+  const isTimeout = remainingSeconds < 120 && minuteOffset % 3 === 0;
 
   return {
     match_id: seed.identity.match_id,
-    match_status: remainingSeconds <= 30 ? "completed" : "live",
+    match_status: remainingSeconds <= 30 ? "completed" : isTimeout ? "paused" : "live",
     period: {
       code: remainingSeconds <= 180 ? "fourth_quarter" : "third_quarter",
       display: remainingSeconds <= 180 ? "4th Quarter" : "3rd Quarter"
@@ -435,11 +456,17 @@ const buildBasketballState = (
       }
     ],
     special_state: {
-      is_timeout: remainingSeconds < 120 && minuteOffset % 3 === 0,
+      is_timeout: isTimeout,
       is_under_review: false,
       is_injury_delay: false,
       is_weather_delay: false,
-      is_overtime_or_tiebreak: false
+      is_overtime_or_tiebreak: false,
+      is_paused: isTimeout,
+      is_postponed: false,
+      is_cancelled: false,
+      is_suspended: false,
+      pause_reason: isTimeout ? "timeout" : null,
+      status_reason: isTimeout ? "Late timeout stopped live play briefly." : null
     },
     excitement: {
       aggregate_score: 90,
@@ -458,6 +485,20 @@ const buildBasketballState = (
       score: 92,
       level: "very_close"
     },
+    watchability: buildWatchability({
+      current_score: 91,
+      tension_score: 90,
+      scoring_imminence_score: 82,
+      swing_potential_score: 88,
+      state_clarity_score: 83,
+      evidence_strength_score: 82
+    }),
+    cross_phase_scores: buildCrossPhaseScores({
+      stakes_score: 79,
+      star_power_score: 82,
+      upset_potential_score: 46,
+      narrative_strength_score: 74
+    }),
     momentum: {
       leading_participant_id: seed.momentumParticipantId,
       score: 76,
@@ -518,10 +559,11 @@ const buildSoccerState = (
   const remainingSeconds = Math.max(60, (90 - elapsedMinutes) * 60);
   const leader = leadingParticipantId(seed, homeScore, awayScore);
   const isLevel = homeScore === awayScore;
+  const isUnderReview = elapsedMinutes >= 70 && minuteOffset % 4 === 0;
 
   return {
     match_id: seed.identity.match_id,
-    match_status: elapsedMinutes >= 89 ? "completed" : "live",
+    match_status: elapsedMinutes >= 89 ? "completed" : isUnderReview ? "paused" : "live",
     period: {
       code: elapsedMinutes >= 45 ? "second_half" : "first_half",
       display: elapsedMinutes >= 45 ? "2nd Half" : "1st Half"
@@ -582,10 +624,18 @@ const buildSoccerState = (
     ],
     special_state: {
       is_timeout: false,
-      is_under_review: elapsedMinutes >= 70 && minuteOffset % 4 === 0,
+      is_under_review: isUnderReview,
       is_injury_delay: false,
       is_weather_delay: false,
-      is_overtime_or_tiebreak: false
+      is_overtime_or_tiebreak: false,
+      is_paused: isUnderReview,
+      is_postponed: false,
+      is_cancelled: false,
+      is_suspended: false,
+      pause_reason: isUnderReview ? "video review" : null,
+      status_reason: isUnderReview
+        ? "Play is paused while the officials complete a video review."
+        : null
     },
     excitement: {
       aggregate_score: 84,
@@ -604,6 +654,20 @@ const buildSoccerState = (
       score: isLevel ? 95 : 86,
       level: isLevel ? "level" : "close"
     },
+    watchability: buildWatchability({
+      current_score: isLevel ? 87 : 82,
+      tension_score: isLevel ? 89 : 81,
+      scoring_imminence_score: 73,
+      swing_potential_score: isLevel ? 86 : 78,
+      state_clarity_score: 80,
+      evidence_strength_score: 79
+    }),
+    cross_phase_scores: buildCrossPhaseScores({
+      stakes_score: 71,
+      star_power_score: 78,
+      upset_potential_score: 63,
+      narrative_strength_score: 76
+    }),
     momentum: {
       leading_participant_id: seed.momentumParticipantId,
       score: 71,
@@ -670,10 +734,11 @@ const buildFootballState = (
     minuteOffset % 2 === 0
       ? seed.identity.participants[0].participant_id
       : seed.identity.participants[1].participant_id;
+  const isTimeout = minuteOffset % 3 === 0;
 
   return {
     match_id: seed.identity.match_id,
-    match_status: "live",
+    match_status: isTimeout ? "paused" : "live",
     period: {
       code: quarter === 4 ? "fourth_quarter" : "third_quarter",
       display: quarter === 4 ? "4th Quarter" : "3rd Quarter"
@@ -731,11 +796,17 @@ const buildFootballState = (
       }
     ],
     special_state: {
-      is_timeout: minuteOffset % 3 === 0,
+      is_timeout: isTimeout,
       is_under_review: false,
       is_injury_delay: false,
       is_weather_delay: false,
-      is_overtime_or_tiebreak: false
+      is_overtime_or_tiebreak: false,
+      is_paused: isTimeout,
+      is_postponed: false,
+      is_cancelled: false,
+      is_suspended: false,
+      pause_reason: isTimeout ? "team timeout" : null,
+      status_reason: isTimeout ? "The current drive is paused during a timeout." : null
     },
     excitement: {
       aggregate_score: 88,
@@ -754,6 +825,20 @@ const buildFootballState = (
       score: 85,
       level: "close"
     },
+    watchability: buildWatchability({
+      current_score: 86,
+      tension_score: 88,
+      scoring_imminence_score: quarterRemaining < 220 ? 81 : 70,
+      swing_potential_score: 84,
+      state_clarity_score: 82,
+      evidence_strength_score: 80
+    }),
+    cross_phase_scores: buildCrossPhaseScores({
+      stakes_score: 84,
+      star_power_score: 87,
+      upset_potential_score: 54,
+      narrative_strength_score: 85
+    }),
     momentum: {
       leading_participant_id: possessionTeam,
       score: 74,
@@ -817,10 +902,11 @@ const buildBaseballState = (
     half === "top"
       ? seed.identity.participants[1].participant_id
       : seed.identity.participants[0].participant_id;
+  const isUnderReview = minuteOffset % 5 === 0;
 
   return {
     match_id: seed.identity.match_id,
-    match_status: "live",
+    match_status: isUnderReview ? "paused" : "live",
     period: {
       code: `${half}_${inning}`,
       display: `${half === "top" ? "Top" : "Bottom"} ${inning}th`
@@ -877,10 +963,18 @@ const buildBaseballState = (
     ],
     special_state: {
       is_timeout: false,
-      is_under_review: minuteOffset % 5 === 0,
+      is_under_review: isUnderReview,
       is_injury_delay: false,
       is_weather_delay: false,
-      is_overtime_or_tiebreak: inning >= 9 && homeScore === awayScore
+      is_overtime_or_tiebreak: inning >= 9 && homeScore === awayScore,
+      is_paused: isUnderReview,
+      is_postponed: false,
+      is_cancelled: false,
+      is_suspended: false,
+      pause_reason: isUnderReview ? "umpire review" : null,
+      status_reason: isUnderReview
+        ? "Play is paused while the umpire review is completed."
+        : null
     },
     excitement: {
       aggregate_score: 81,
@@ -899,6 +993,20 @@ const buildBaseballState = (
       score: 84,
       level: "close"
     },
+    watchability: buildWatchability({
+      current_score: 72,
+      tension_score: 61,
+      scoring_imminence_score: 66,
+      swing_potential_score: 69,
+      state_clarity_score: 81,
+      evidence_strength_score: 78
+    }),
+    cross_phase_scores: buildCrossPhaseScores({
+      stakes_score: 68,
+      star_power_score: 66,
+      upset_potential_score: 57,
+      narrative_strength_score: 70
+    }),
     momentum: {
       leading_participant_id: battingSide,
       score: 69,
@@ -959,10 +1067,11 @@ const buildCricketState = (
       : seed.identity.participants[1].participant_id;
   const over = 15.2 + minuteOffset * 0.2;
   const wickets = 4 + (minuteOffset % 3);
+  const isWeatherDelay = minuteOffset % 7 === 0;
 
   return {
     match_id: seed.identity.match_id,
-    match_status: "live",
+    match_status: isWeatherDelay ? "suspended" : "live",
     period: {
       code: "middle_overs",
       display: `Over ${over.toFixed(1)}`
@@ -1020,8 +1129,16 @@ const buildCricketState = (
       is_timeout: false,
       is_under_review: false,
       is_injury_delay: false,
-      is_weather_delay: false,
-      is_overtime_or_tiebreak: false
+      is_weather_delay: isWeatherDelay,
+      is_overtime_or_tiebreak: false,
+      is_paused: isWeatherDelay,
+      is_postponed: false,
+      is_cancelled: false,
+      is_suspended: isWeatherDelay,
+      pause_reason: isWeatherDelay ? "weather delay" : null,
+      status_reason: isWeatherDelay
+        ? "Weather has temporarily suspended play."
+        : null
     },
     excitement: {
       aggregate_score: 83,
@@ -1040,6 +1157,20 @@ const buildCricketState = (
       score: 80,
       level: "close"
     },
+    watchability: buildWatchability({
+      current_score: 83,
+      tension_score: 78,
+      scoring_imminence_score: 79,
+      swing_potential_score: 81,
+      state_clarity_score: 77,
+      evidence_strength_score: 76
+    }),
+    cross_phase_scores: buildCrossPhaseScores({
+      stakes_score: 69,
+      star_power_score: 76,
+      upset_potential_score: 60,
+      narrative_strength_score: 74
+    }),
     momentum: {
       leading_participant_id: battingSide,
       score: 73,
@@ -1099,10 +1230,11 @@ const buildHockeyState = (
   const periodNumber = minuteOffset >= 6 ? 3 : 2;
   const remainingSeconds = Math.max(45, 1200 - minuteOffset * 120);
   const leader = leadingParticipantId(seed, homeScore, awayScore);
+  const isUnderReview = minuteOffset % 4 === 0;
 
   return {
     match_id: seed.identity.match_id,
-    match_status: "live",
+    match_status: isUnderReview ? "paused" : "live",
     period: {
       code: periodNumber === 3 ? "third_period" : "second_period",
       display: periodNumber === 3 ? "3rd Period" : "2nd Period"
@@ -1162,10 +1294,18 @@ const buildHockeyState = (
     ],
     special_state: {
       is_timeout: false,
-      is_under_review: minuteOffset % 4 === 0,
+      is_under_review: isUnderReview,
       is_injury_delay: false,
       is_weather_delay: false,
-      is_overtime_or_tiebreak: false
+      is_overtime_or_tiebreak: false,
+      is_paused: isUnderReview,
+      is_postponed: false,
+      is_cancelled: false,
+      is_suspended: false,
+      pause_reason: isUnderReview ? "goal review" : null,
+      status_reason: isUnderReview
+        ? "Officials are reviewing the previous sequence before play resumes."
+        : null
     },
     excitement: {
       aggregate_score: 82,
@@ -1184,6 +1324,20 @@ const buildHockeyState = (
       score: 87,
       level: "close"
     },
+    watchability: buildWatchability({
+      current_score: 80,
+      tension_score: 83,
+      scoring_imminence_score: 77,
+      swing_potential_score: 78,
+      state_clarity_score: 79,
+      evidence_strength_score: 78
+    }),
+    cross_phase_scores: buildCrossPhaseScores({
+      stakes_score: 65,
+      star_power_score: 72,
+      upset_potential_score: 52,
+      narrative_strength_score: 71
+    }),
     momentum: {
       leading_participant_id: seed.momentumParticipantId,
       score: 72,
@@ -1242,10 +1396,11 @@ const buildTennisState = (
     minuteOffset % 2 === 0
       ? seed.identity.participants[0].participant_id
       : seed.identity.participants[1].participant_id;
+  const isMedicalTimeout = minuteOffset % 6 === 0;
 
   return {
     match_id: seed.identity.match_id,
-    match_status: "live",
+    match_status: isMedicalTimeout ? "paused" : "live",
     period: {
       code: `set_${currentSet}`,
       display: `Set ${currentSet}`
@@ -1298,11 +1453,19 @@ const buildTennisState = (
       }
     ],
     special_state: {
-      is_timeout: false,
+      is_timeout: isMedicalTimeout,
       is_under_review: false,
-      is_injury_delay: false,
+      is_injury_delay: isMedicalTimeout,
       is_weather_delay: false,
-      is_overtime_or_tiebreak: currentSet === 3 && homeScore === awayScore
+      is_overtime_or_tiebreak: currentSet === 3 && homeScore === awayScore,
+      is_paused: isMedicalTimeout,
+      is_postponed: false,
+      is_cancelled: false,
+      is_suspended: false,
+      pause_reason: isMedicalTimeout ? "medical timeout" : null,
+      status_reason: isMedicalTimeout
+        ? "Play is paused during a medical timeout."
+        : null
     },
     excitement: {
       aggregate_score: 79,
@@ -1321,6 +1484,20 @@ const buildTennisState = (
       score: 89,
       level: "very_close"
     },
+    watchability: buildWatchability({
+      current_score: 84,
+      tension_score: 85,
+      scoring_imminence_score: 74,
+      swing_potential_score: 82,
+      state_clarity_score: 80,
+      evidence_strength_score: 79
+    }),
+    cross_phase_scores: buildCrossPhaseScores({
+      stakes_score: 83,
+      star_power_score: 91,
+      upset_potential_score: 50,
+      narrative_strength_score: 84
+    }),
     momentum: {
       leading_participant_id: serveSide,
       score: 68,
@@ -1373,10 +1550,11 @@ const buildMmaState = (
     minuteOffset % 2 === 0
       ? seed.identity.participants[0].participant_id
       : seed.identity.participants[1].participant_id;
+  const isInjuryDelay = minuteOffset % 8 === 0;
 
   return {
     match_id: seed.identity.match_id,
-    match_status: "live",
+    match_status: isInjuryDelay ? "paused" : "live",
     period: {
       code: `round_${round}`,
       display: `Round ${round}`
@@ -1437,9 +1615,17 @@ const buildMmaState = (
     special_state: {
       is_timeout: false,
       is_under_review: false,
-      is_injury_delay: false,
+      is_injury_delay: isInjuryDelay,
       is_weather_delay: false,
-      is_overtime_or_tiebreak: false
+      is_overtime_or_tiebreak: false,
+      is_paused: isInjuryDelay,
+      is_postponed: false,
+      is_cancelled: false,
+      is_suspended: false,
+      pause_reason: isInjuryDelay ? "cage-side medical check" : null,
+      status_reason: isInjuryDelay
+        ? "The referee has paused action for a quick medical check."
+        : null
     },
     excitement: {
       aggregate_score: 78,
@@ -1458,6 +1644,20 @@ const buildMmaState = (
       score: 74,
       level: "competitive"
     },
+    watchability: buildWatchability({
+      current_score: 82,
+      tension_score: 79,
+      scoring_imminence_score: 88,
+      swing_potential_score: 91,
+      state_clarity_score: 76,
+      evidence_strength_score: 75
+    }),
+    cross_phase_scores: buildCrossPhaseScores({
+      stakes_score: 69,
+      star_power_score: 86,
+      upset_potential_score: 61,
+      narrative_strength_score: 77
+    }),
     momentum: {
       leading_participant_id: aggressor,
       score: 67,
@@ -2305,7 +2505,7 @@ const upcomingSeeds: UpcomingSeed[] = [
       context_fingerprint: "ctx_nyk_mil_v1",
       context_generated_at: "2026-06-16T20:30:00.000Z"
     },
-    upcoming_intelligence: {
+    upcoming_intelligence: buildUpcomingIntelligence({
       headline: "A likely playoff-preview level contest",
       summary:
         "This game projects as one of the strongest upcoming basketball matchups in the current window.",
@@ -2315,11 +2515,25 @@ const upcomingSeeds: UpcomingSeed[] = [
         "The matchup has seeding implications",
         "Late-game creation should be tested"
       ],
+      cross_phase_scores: buildCrossPhaseScores({
+        stakes_score: 82,
+        star_power_score: 78,
+        upset_potential_score: 58,
+        narrative_strength_score: 81
+      }),
+      audience_signals: buildAudienceSignals({
+        audience_interest_score: 84,
+        stakes_score: 82,
+        star_power_score: 78,
+        volatility_score: 73,
+        upset_potential_score: 58,
+        narrative_strength_score: 81
+      }),
       win_probabilities: [
         { participant_id: "nyk", probability: 0.52 },
         { participant_id: "mil", probability: 0.48 }
       ]
-    }
+    })
   },
   {
     region: "north-america",
@@ -2368,7 +2582,7 @@ const upcomingSeeds: UpcomingSeed[] = [
       context_fingerprint: "ctx_mia_atl_v1",
       context_generated_at: "2026-06-16T21:00:00.000Z"
     },
-    upcoming_intelligence: {
+    upcoming_intelligence: buildUpcomingIntelligence({
       headline: "One of the more volatile MLS fixtures this week",
       summary:
         "The game profiles as high-event, with strong watchability even if prediction confidence is moderate.",
@@ -2378,11 +2592,25 @@ const upcomingSeeds: UpcomingSeed[] = [
         "Potential playoff positioning impact",
         "Open tactical matchup"
       ],
+      cross_phase_scores: buildCrossPhaseScores({
+        stakes_score: 71,
+        star_power_score: 79,
+        upset_potential_score: 63,
+        narrative_strength_score: 78
+      }),
+      audience_signals: buildAudienceSignals({
+        audience_interest_score: 82,
+        stakes_score: 71,
+        star_power_score: 79,
+        volatility_score: 86,
+        upset_potential_score: 63,
+        narrative_strength_score: 78
+      }),
       win_probabilities: [
         { participant_id: "mia", probability: 0.55 },
         { participant_id: "atl", probability: 0.45 }
       ]
-    }
+    })
   },
   {
     region: "north-america",
@@ -2431,7 +2659,7 @@ const upcomingSeeds: UpcomingSeed[] = [
       context_fingerprint: "ctx_phi_bal_v1",
       context_generated_at: "2026-06-16T20:05:00.000Z"
     },
-    upcoming_intelligence: {
+    upcoming_intelligence: buildUpcomingIntelligence({
       headline: "A premium NFL chess match in the coming window",
       summary:
         "Both teams bring top-tier structure, which raises the chance of a late one-possession finish.",
@@ -2441,11 +2669,25 @@ const upcomingSeeds: UpcomingSeed[] = [
         "Strong defensive adjustment potential",
         "Likely one-possession script"
       ],
+      cross_phase_scores: buildCrossPhaseScores({
+        stakes_score: 84,
+        star_power_score: 87,
+        upset_potential_score: 54,
+        narrative_strength_score: 85
+      }),
+      audience_signals: buildAudienceSignals({
+        audience_interest_score: 88,
+        stakes_score: 84,
+        star_power_score: 87,
+        volatility_score: 72,
+        upset_potential_score: 54,
+        narrative_strength_score: 85
+      }),
       win_probabilities: [
         { participant_id: "phi", probability: 0.51 },
         { participant_id: "bal", probability: 0.49 }
       ]
-    }
+    })
   },
   {
     region: "north-america",
@@ -2494,7 +2736,7 @@ const upcomingSeeds: UpcomingSeed[] = [
       context_fingerprint: "ctx_hou_sea_v1",
       context_generated_at: "2026-06-16T19:40:00.000Z"
     },
-    upcoming_intelligence: {
+    upcoming_intelligence: buildUpcomingIntelligence({
       headline: "A layered pitching-and-contact matchup",
       summary:
         "The game projects as close because both clubs can extend at-bats and pressure middle innings.",
@@ -2504,11 +2746,25 @@ const upcomingSeeds: UpcomingSeed[] = [
         "Both lineups can manufacture leverage",
         "Expected narrow run margin"
       ],
+      cross_phase_scores: buildCrossPhaseScores({
+        stakes_score: 68,
+        star_power_score: 66,
+        upset_potential_score: 57,
+        narrative_strength_score: 70
+      }),
+      audience_signals: buildAudienceSignals({
+        audience_interest_score: 74,
+        stakes_score: 68,
+        star_power_score: 66,
+        volatility_score: 59,
+        upset_potential_score: 57,
+        narrative_strength_score: 70
+      }),
       win_probabilities: [
         { participant_id: "hou", probability: 0.53 },
         { participant_id: "sea2", probability: 0.47 }
       ]
-    }
+    })
   },
   {
     region: "north-america",
@@ -2558,7 +2814,7 @@ const upcomingSeeds: UpcomingSeed[] = [
       context_fingerprint: "ctx_tor_vgk_v1",
       context_generated_at: "2026-06-16T18:15:00.000Z"
     },
-    upcoming_intelligence: {
+    upcoming_intelligence: buildUpcomingIntelligence({
       headline: "A strong cross-conference hockey matchup",
       summary:
         "The pace and transition quality suggest a game that stays tactically alive throughout.",
@@ -2568,11 +2824,25 @@ const upcomingSeeds: UpcomingSeed[] = [
         "Special teams could swing the margin",
         "Even-strength play is closely matched"
       ],
+      cross_phase_scores: buildCrossPhaseScores({
+        stakes_score: 65,
+        star_power_score: 72,
+        upset_potential_score: 52,
+        narrative_strength_score: 71
+      }),
+      audience_signals: buildAudienceSignals({
+        audience_interest_score: 76,
+        stakes_score: 65,
+        star_power_score: 72,
+        volatility_score: 69,
+        upset_potential_score: 52,
+        narrative_strength_score: 71
+      }),
       win_probabilities: [
         { participant_id: "tor", probability: 0.5 },
         { participant_id: "vgk", probability: 0.5 }
       ]
-    }
+    })
   },
   {
     region: "north-america",
@@ -2621,7 +2891,7 @@ const upcomingSeeds: UpcomingSeed[] = [
       context_fingerprint: "ctx_per_whi_v1",
       context_generated_at: "2026-06-16T19:55:00.000Z"
     },
-    upcoming_intelligence: {
+    upcoming_intelligence: buildUpcomingIntelligence({
       headline: "A striking-heavy UFC matchup with real finish upside",
       summary:
         "The matchup carries strong watchability because one clean sequence could reset the whole read.",
@@ -2631,11 +2901,25 @@ const upcomingSeeds: UpcomingSeed[] = [
         "Elite range management battle",
         "Momentum can flip instantly"
       ],
+      cross_phase_scores: buildCrossPhaseScores({
+        stakes_score: 69,
+        star_power_score: 86,
+        upset_potential_score: 61,
+        narrative_strength_score: 77
+      }),
+      audience_signals: buildAudienceSignals({
+        audience_interest_score: 81,
+        stakes_score: 69,
+        star_power_score: 86,
+        volatility_score: 88,
+        upset_potential_score: 61,
+        narrative_strength_score: 77
+      }),
       win_probabilities: [
         { participant_id: "per", probability: 0.56 },
         { participant_id: "whi", probability: 0.44 }
       ]
-    }
+    })
   },
   {
     region: "europe",
@@ -2647,7 +2931,7 @@ const upcomingSeeds: UpcomingSeed[] = [
         sport: "soccer",
         tournament_name: "Serie A",
         tournament_stage: "Regular Season",
-        scheduled_start_time: "2026-06-18T18:45:00.000Z",
+        scheduled_start_time: "2026-06-19T18:45:00.000Z",
         venue: {
           stadium: "San Siro",
           city: "Milan",
@@ -2684,7 +2968,7 @@ const upcomingSeeds: UpcomingSeed[] = [
       context_fingerprint: "ctx_int_nap_v1",
       context_generated_at: "2026-06-16T16:20:00.000Z"
     },
-    upcoming_intelligence: {
+    upcoming_intelligence: buildUpcomingIntelligence({
       headline:
         "One of the strongest European club fixtures in the current window",
       summary:
@@ -2695,11 +2979,25 @@ const upcomingSeeds: UpcomingSeed[] = [
         "High technical quality in midfield",
         "Likely narrow margin"
       ],
+      cross_phase_scores: buildCrossPhaseScores({
+        stakes_score: 90,
+        star_power_score: 84,
+        upset_potential_score: 48,
+        narrative_strength_score: 88
+      }),
+      audience_signals: buildAudienceSignals({
+        audience_interest_score: 87,
+        stakes_score: 90,
+        star_power_score: 84,
+        volatility_score: 66,
+        upset_potential_score: 48,
+        narrative_strength_score: 88
+      }),
       win_probabilities: [
         { participant_id: "int", probability: 0.54 },
         { participant_id: "nap", probability: 0.46 }
       ]
-    }
+    })
   },
   {
     region: "europe",
@@ -2711,7 +3009,7 @@ const upcomingSeeds: UpcomingSeed[] = [
         sport: "tennis",
         tournament_name: "WTA Tour",
         tournament_stage: "Semifinal",
-        scheduled_start_time: "2026-06-18T14:30:00.000Z",
+        scheduled_start_time: "2026-06-19T14:30:00.000Z",
         venue: {
           stadium: "Court Philippe-Chatrier",
           city: "Paris",
@@ -2748,7 +3046,7 @@ const upcomingSeeds: UpcomingSeed[] = [
       context_fingerprint: "ctx_sab_iga_v1",
       context_generated_at: "2026-06-16T15:05:00.000Z"
     },
-    upcoming_intelligence: {
+    upcoming_intelligence: buildUpcomingIntelligence({
       headline: "One of the strongest tennis fixtures in the window",
       summary:
         "This matchup should stay tense because both players can turn small return edges into set pressure.",
@@ -2758,11 +3056,25 @@ const upcomingSeeds: UpcomingSeed[] = [
         "Break-point leverage should be constant",
         "Very narrow projected margin"
       ],
+      cross_phase_scores: buildCrossPhaseScores({
+        stakes_score: 83,
+        star_power_score: 91,
+        upset_potential_score: 50,
+        narrative_strength_score: 84
+      }),
+      audience_signals: buildAudienceSignals({
+        audience_interest_score: 85,
+        stakes_score: 83,
+        star_power_score: 91,
+        volatility_score: 72,
+        upset_potential_score: 50,
+        narrative_strength_score: 84
+      }),
       win_probabilities: [
         { participant_id: "sab", probability: 0.48 },
         { participant_id: "iga", probability: 0.52 }
       ]
-    }
+    })
   },
   {
     region: "latin-america",
@@ -2811,7 +3123,7 @@ const upcomingSeeds: UpcomingSeed[] = [
       context_fingerprint: "ctx_cor_flu_v1",
       context_generated_at: "2026-06-16T21:10:00.000Z"
     },
-    upcoming_intelligence: {
+    upcoming_intelligence: buildUpcomingIntelligence({
       headline:
         "A volatile South American league matchup with tactical contrast",
       summary:
@@ -2822,11 +3134,25 @@ const upcomingSeeds: UpcomingSeed[] = [
         "Strong counterattacking potential",
         "Likely momentum swings"
       ],
+      cross_phase_scores: buildCrossPhaseScores({
+        stakes_score: 67,
+        star_power_score: 70,
+        upset_potential_score: 59,
+        narrative_strength_score: 75
+      }),
+      audience_signals: buildAudienceSignals({
+        audience_interest_score: 77,
+        stakes_score: 67,
+        star_power_score: 70,
+        volatility_score: 82,
+        upset_potential_score: 59,
+        narrative_strength_score: 75
+      }),
       win_probabilities: [
         { participant_id: "cor", probability: 0.5 },
         { participant_id: "flu", probability: 0.5 }
       ]
-    }
+    })
   },
   {
     region: "asia-pacific",
@@ -2838,7 +3164,7 @@ const upcomingSeeds: UpcomingSeed[] = [
         sport: "basketball",
         tournament_name: "B.League",
         tournament_stage: "Regular Season",
-        scheduled_start_time: "2026-06-18T10:05:00.000Z",
+        scheduled_start_time: "2026-06-19T10:05:00.000Z",
         venue: {
           stadium: "Yoyogi National Gymnasium",
           city: "Tokyo",
@@ -2875,7 +3201,7 @@ const upcomingSeeds: UpcomingSeed[] = [
       context_fingerprint: "ctx_tok_osa_v1",
       context_generated_at: "2026-06-16T08:30:00.000Z"
     },
-    upcoming_intelligence: {
+    upcoming_intelligence: buildUpcomingIntelligence({
       headline: "A strong Asia-Pacific basketball fixture with playoff energy",
       summary:
         "Both teams project well in structured offense, which raises the chance of a close late-game finish.",
@@ -2885,11 +3211,25 @@ const upcomingSeeds: UpcomingSeed[] = [
         "Tight rebounding battle",
         "Late-game execution test"
       ],
+      cross_phase_scores: buildCrossPhaseScores({
+        stakes_score: 74,
+        star_power_score: 68,
+        upset_potential_score: 55,
+        narrative_strength_score: 73
+      }),
+      audience_signals: buildAudienceSignals({
+        audience_interest_score: 78,
+        stakes_score: 74,
+        star_power_score: 68,
+        volatility_score: 70,
+        upset_potential_score: 55,
+        narrative_strength_score: 73
+      }),
       win_probabilities: [
         { participant_id: "tok", probability: 0.57 },
         { participant_id: "osa", probability: 0.43 }
       ]
-    }
+    })
   },
   {
     region: "asia-pacific",
@@ -2901,7 +3241,7 @@ const upcomingSeeds: UpcomingSeed[] = [
         sport: "cricket",
         tournament_name: "T20 International",
         tournament_stage: "Series Match",
-        scheduled_start_time: "2026-06-18T09:30:00.000Z",
+        scheduled_start_time: "2026-06-19T09:30:00.000Z",
         venue: {
           stadium: "Gaddafi Stadium",
           city: "Lahore",
@@ -2939,7 +3279,7 @@ const upcomingSeeds: UpcomingSeed[] = [
       context_fingerprint: "ctx_pak_nz_v1",
       context_generated_at: "2026-06-16T07:50:00.000Z"
     },
-    upcoming_intelligence: {
+    upcoming_intelligence: buildUpcomingIntelligence({
       headline: "A compelling T20 matchup with chase volatility",
       summary:
         "The match projects as tightly balanced because both sides can accelerate sharply through the middle overs.",
@@ -2949,11 +3289,25 @@ const upcomingSeeds: UpcomingSeed[] = [
         "Boundary-hitting depth",
         "Volatile chase profile"
       ],
+      cross_phase_scores: buildCrossPhaseScores({
+        stakes_score: 69,
+        star_power_score: 76,
+        upset_potential_score: 60,
+        narrative_strength_score: 74
+      }),
+      audience_signals: buildAudienceSignals({
+        audience_interest_score: 80,
+        stakes_score: 69,
+        star_power_score: 76,
+        volatility_score: 88,
+        upset_potential_score: 60,
+        narrative_strength_score: 74
+      }),
       win_probabilities: [
         { participant_id: "pak", probability: 0.51 },
         { participant_id: "nz", probability: 0.49 }
       ]
-    }
+    })
   }
 ];
 

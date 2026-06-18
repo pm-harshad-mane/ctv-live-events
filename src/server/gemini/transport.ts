@@ -1,9 +1,10 @@
 import https from "node:https";
 import type { AppEnv } from "../config/env";
+import { writeAiResponseLog } from "../lib/ai-response-logger";
 import type {
   StructuredResponseRequest,
   StructuredResponseTransport
-} from "../openai/transport";
+} from "../structured-output/types";
 
 export class GeminiApiError extends Error {
   constructor(
@@ -276,6 +277,16 @@ export class GeminiStructuredTransport implements StructuredResponseTransport {
       );
     }
 
+    const generationConfig: Record<string, unknown> = {
+      responseMimeType: "application/json",
+      responseJsonSchema: request.schema.schema
+    };
+
+    if (!this.env.disableAiOutputTokenLimits) {
+      generationConfig.maxOutputTokens =
+        request.maxOutputTokens ?? this.env.geminiMaxOutputTokens;
+    }
+
     const body = JSON.stringify({
       system_instruction: {
         parts: [{ text: request.instructions }]
@@ -292,85 +303,122 @@ export class GeminiStructuredTransport implements StructuredResponseTransport {
               tool.type === "web_search" ? { google_search: {} } : tool
             )
           : undefined,
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseJsonSchema: request.schema.schema,
-        maxOutputTokens:
-          request.maxOutputTokens ?? this.env.geminiMaxOutputTokens
-      }
+      generationConfig
     });
 
-    const raw = await new Promise<string>((resolve, reject) => {
-      const req = https.request(
-        {
-          method: "POST",
-          hostname: "generativelanguage.googleapis.com",
-          path: `/v1beta/models/${this.env.geminiModel}:generateContent?key=${encodeURIComponent(apiKey)}`,
-          headers: {
-            "x-goog-api-key": apiKey,
-            "Content-Type": "application/json",
-            "Content-Length": Buffer.byteLength(body)
-          }
-        },
-        (response) => {
-          let data = "";
-          response.setEncoding("utf8");
-          response.on("data", (chunk) => {
-            data += chunk;
-          });
-          response.on("end", () => {
-            if ((response.statusCode ?? 500) >= 400) {
-              let parsed: unknown = data;
-              try {
-                parsed = JSON.parse(data);
-              } catch {
-                // keep raw body
-              }
-              reject(
-                new GeminiApiError(
-                  extractApiErrorMessage(parsed) ??
-                    `Gemini API request failed with status ${response.statusCode}.`,
-                  response.statusCode ?? 500,
-                  parsed
-                )
-              );
-              return;
+    try {
+      const raw = await new Promise<string>((resolve, reject) => {
+        const req = https.request(
+          {
+            method: "POST",
+            hostname: "generativelanguage.googleapis.com",
+            path: `/v1beta/models/${this.env.geminiModel}:generateContent?key=${encodeURIComponent(apiKey)}`,
+            headers: {
+              "x-goog-api-key": apiKey,
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(body)
             }
-            resolve(data);
-          });
-        }
-      );
-
-      req.setTimeout(this.env.geminiRequestTimeoutMs, () => {
-        req.destroy(
-          new Error(
-            `Gemini request timed out after ${this.env.geminiRequestTimeoutMs}ms.`
-          )
+          },
+          (response) => {
+            let data = "";
+            response.setEncoding("utf8");
+            response.on("data", (chunk) => {
+              data += chunk;
+            });
+            response.on("end", () => {
+              if ((response.statusCode ?? 500) >= 400) {
+                let parsed: unknown = data;
+                try {
+                  parsed = JSON.parse(data);
+                } catch {
+                  // keep raw body
+                }
+                reject(
+                  new GeminiApiError(
+                    extractApiErrorMessage(parsed) ??
+                      `Gemini API request failed with status ${response.statusCode}.`,
+                    response.statusCode ?? 500,
+                    parsed
+                  )
+                );
+                return;
+              }
+              resolve(data);
+            });
+          }
         );
+
+        req.setTimeout(this.env.geminiRequestTimeoutMs, () => {
+          req.destroy(
+            new Error(
+              `Gemini request timed out after ${this.env.geminiRequestTimeoutMs}ms.`
+            )
+          );
+        });
+        req.on("error", reject);
+        req.write(body);
+        req.end();
       });
-      req.on("error", reject);
-      req.write(body);
-      req.end();
-    });
 
-    const parsed = parseGeminiApiPayload(raw);
-    const text = extractOutputText(parsed);
-    if (text.trim().length === 0) {
-      throw new Error(
-        "Gemini returned an empty structured response after search grounding."
-      );
+      const parsed = parseGeminiApiPayload(raw);
+      const text = extractOutputText(parsed);
+      if (text.trim().length === 0) {
+        throw new Error(
+          "Gemini returned an empty structured response after search grounding."
+        );
+      }
+
+      const structured = parseStructuredJsonText(text);
+      const metadata = extractGroundingMetadata(parsed);
+
+      await writeAiResponseLog(this.env, {
+        provider: "gemini",
+        model: this.env.geminiModel,
+        schema_name: request.schema.name,
+        phase: "success",
+        request: {
+          instructions: request.instructions,
+          input: request.input,
+          max_output_tokens: request.maxOutputTokens,
+          tools: request.tools,
+          tool_choice: request.toolChoice,
+          include: request.include
+        },
+        raw_response_body: raw,
+        api_payload: parsed,
+        structured_output: structured,
+        metadata
+      });
+
+      if (structured && typeof structured === "object") {
+        return {
+          ...structured,
+          _gemini_metadata: metadata
+        } as Record<string, unknown>;
+      }
+
+      return structured;
+    } catch (error) {
+      await writeAiResponseLog(this.env, {
+        provider: "gemini",
+        model: this.env.geminiModel,
+        schema_name: request.schema.name,
+        phase: error instanceof GeminiApiError ? "api_error" : "parse_error",
+        request: {
+          instructions: request.instructions,
+          input: request.input,
+          max_output_tokens: request.maxOutputTokens,
+          tools: request.tools,
+          tool_choice: request.toolChoice,
+          include: request.include
+        },
+        error: {
+          message: error instanceof Error ? error.message : "Unknown Gemini error.",
+          status: error instanceof GeminiApiError ? error.status : undefined,
+          payload: error instanceof GeminiApiError ? error.payload : undefined
+        }
+      });
+      throw error;
     }
-
-    const structured = parseStructuredJsonText(text);
-    const metadata = extractGroundingMetadata(parsed);
-
-    if (structured && typeof structured === "object") {
-      return {
-        ...structured,
-        _gemini_metadata: metadata
-      } as Record<string, unknown>;
-    }
-
-    return structured;
   }
 }
