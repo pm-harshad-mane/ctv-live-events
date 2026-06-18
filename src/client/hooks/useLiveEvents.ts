@@ -41,18 +41,53 @@ const buildIdentity = (event: LiveEvent): MatchIdentity => ({
   tournament_name: event.context?.match.tournament_name ?? "Unknown",
   scheduled_start_time:
     event.context?.match.scheduled_start_time ?? new Date().toISOString(),
-  participants:
+  participants: getIdentityParticipants(event)
+});
+
+const hasTwoParticipants = (
+  participants: Array<{ participant_id: string; name: string }>
+): boolean => participants.length >= 2;
+
+const getIdentityParticipants = (event: LiveEvent): MatchIdentity["participants"] => {
+  const contextParticipants =
     event.context?.participants.map((participant) => ({
       participant_id: participant.participant_id,
       name: participant.name,
       short_name: participant.short_name
-    })) ?? []
-});
+    })) ?? [];
+
+  if (hasTwoParticipants(contextParticipants)) {
+    return contextParticipants;
+  }
+
+  const matchName = event.context?.match.match_name ?? "";
+  const nameParts = matchName
+    .split(/\s+vs\.?\s+/i)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const scoreParticipants = event.live_state.score.participant_scores;
+
+  if (nameParts.length >= 2 && scoreParticipants.length >= 2) {
+    return scoreParticipants.slice(0, 2).map((participantScore, index) => ({
+      participant_id: participantScore.participant_id,
+      name: nameParts[index] ?? participantScore.participant_id,
+      short_name:
+        participantScore.participant_id.length <= 5
+          ? participantScore.participant_id
+          : null
+    }));
+  }
+
+  return contextParticipants;
+};
 
 const mergeDiscovery = (
   currentEvents: LiveEvent[],
   incomingEvents: LiveEvent[]
 ): LiveEvent[] => {
+  const normalizeScheduledStart = (value: string | undefined): string =>
+    value ? new Date(value).toISOString() : "";
+
   const semanticKeyForEvent = (event: LiveEvent): string => {
     const context = event.context;
     if (!context) {
@@ -66,7 +101,7 @@ const mergeDiscovery = (
 
     return [
       context.match.sport,
-      context.match.scheduled_start_time,
+      normalizeScheduledStart(context.match.scheduled_start_time),
       participantKey
     ].join("::");
   };
@@ -82,15 +117,20 @@ const mergeDiscovery = (
       existing && !shouldAcceptLiveStateUpdate(existing.live_state, incoming.live_state)
         ? existing.live_state
         : incoming.live_state;
+    const acceptedContext =
+      incoming.context_status === "unchanged" && existing?.context
+        ? existing.context
+        : existing?.context &&
+            existing.context.participants.length >= 2 &&
+            (!incoming.context || incoming.context.participants.length < 2)
+          ? existing.context
+          : incoming.context;
 
     byId.set(incoming.match_id, {
       ...(existing ?? incoming),
       ...incoming,
       match_id: existing?.match_id ?? incoming.match_id,
-      context:
-        incoming.context_status === "unchanged" && existing?.context
-          ? existing.context
-          : incoming.context,
+      context: acceptedContext,
       live_state: acceptedState,
       freshness: existing
         ? {
@@ -178,6 +218,22 @@ const isGenericFallbackState = (state: LiveState): boolean => {
   );
 };
 
+const looksLikeMatchRestartFallback = (
+  currentState: LiveState,
+  nextState: LiveState
+): boolean => {
+  const currentAggregateScore = getAggregateNumericScore(currentState);
+  const nextAggregateScore = getAggregateNumericScore(nextState);
+
+  return (
+    currentState.clock.elapsed_seconds > 0 &&
+    nextState.clock.elapsed_seconds === 0 &&
+    nextState.clock.remaining_seconds >= 3600 &&
+    currentAggregateScore > 0 &&
+    nextAggregateScore === 0
+  );
+};
+
 const shouldAcceptLiveStateUpdate = (
   currentState: LiveState,
   nextState: LiveState
@@ -201,6 +257,10 @@ const shouldAcceptLiveStateUpdate = (
     nextAggregateScore === 0 &&
     isGenericFallbackState(nextState)
   ) {
+    return false;
+  }
+
+  if (looksLikeMatchRestartFallback(currentState, nextState)) {
     return false;
   }
 
