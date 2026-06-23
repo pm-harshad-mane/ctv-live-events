@@ -59,7 +59,7 @@ describe("OpenAI providers", () => {
       known_matches: []
     });
 
-    expect(transport.createStructuredResponse).toHaveBeenCalledTimes(1);
+    expect(transport.createStructuredResponse).toHaveBeenCalledTimes(2);
     const request = transport.createStructuredResponse.mock.calls[0][0];
     expect(request.schema.name).toBe("live_discovery_response");
     expect(request.instructions).toContain(
@@ -146,6 +146,226 @@ describe("OpenAI providers", () => {
     expect(request.toolChoice).toBe("auto");
     expect(request.tools?.[0]?.type).toBe("web_search");
     expect(request.tools?.[0]?.external_web_access).toBe(true);
+  });
+
+  it("retries live discovery once when the first pass returns no raw events", async () => {
+    const transport = createTransport((request) => {
+      if (
+        request.instructions.includes(
+          "second-pass live recheck because an earlier discovery call returned no usable live events"
+        )
+      ) {
+        return withWebSearchMetadata({
+          events: [
+            {
+              match_id: "soccer:test:retry-demo",
+              context_status: "new",
+              context_fingerprint: "ctx_retry_demo",
+              context: {
+                match: {
+                  match_id: "soccer:test:retry-demo",
+                  match_name: "Portugal vs Uzbekistan",
+                  sport: "soccer",
+                  tournament_name: "World Cup",
+                  tournament_stage: "Group Stage",
+                  scheduled_start_time: "2026-06-23T17:00:00Z",
+                  venue: {
+                    stadium: "NRG Stadium",
+                    city: "Houston",
+                    state: "Texas",
+                    country: "United States"
+                  }
+                },
+                participants: [
+                  {
+                    participant_id: "por",
+                    name: "Portugal",
+                    short_name: "POR",
+                    role: "home",
+                    ranking: null,
+                    recent_form: []
+                  },
+                  {
+                    participant_id: "uzb",
+                    name: "Uzbekistan",
+                    short_name: "UZB",
+                    role: "away",
+                    ranking: null,
+                    recent_form: []
+                  }
+                ],
+                pre_match_intelligence: {
+                  headline: "Portugal vs Uzbekistan",
+                  summary: "Live in Houston.",
+                  expected_competitiveness: 60,
+                  key_matchup: "Portugal attack vs Uzbekistan block"
+                },
+                context_version: 1,
+                context_fingerprint: "ctx_retry_demo",
+                context_generated_at: "2026-06-23T17:30:00Z"
+              },
+              live_state: {
+                match_id: "soccer:test:retry-demo",
+                match_status: "live",
+                period: {
+                  code: "1H",
+                  display: "1st Half"
+                },
+                clock: {
+                  display: "23:10",
+                  elapsed_seconds: 1390,
+                  remaining_seconds: 3110
+                },
+                score: {
+                  participant_scores: [
+                    {
+                      participant_id: "por",
+                      display_score: "1",
+                      numeric_score: 1
+                    },
+                    {
+                      participant_id: "uzb",
+                      display_score: "0",
+                      numeric_score: 0
+                    }
+                  ],
+                  display: "1-0",
+                  score_differential: 1
+                },
+                sport_specific: {
+                  phase: "open_play"
+                },
+                current_possession_or_control: {
+                  participant_id: "por",
+                  description: "Portugal controlling possession."
+                },
+                active_players: [],
+                what_is_happening: {
+                  headline: "Portugal leads 1-0",
+                  summary: "Portugal is in front during the first half.",
+                  situation_code: "active_play",
+                  key_entity_ids: ["por", "uzb"]
+                },
+                last_major_event: {
+                  event_id: "goal_1",
+                  event_type: "goal",
+                  participant_id: "por",
+                  player_id: null,
+                  description: "Portugal scored the opener.",
+                  match_time: "2026-06-23T17:23:00Z",
+                  event_importance: 80
+                },
+                recent_events: [],
+                special_state: {
+                  is_timeout: false,
+                  is_under_review: false,
+                  is_injury_delay: false,
+                  is_weather_delay: false,
+                  is_overtime_or_tiebreak: false
+                },
+                excitement: {
+                  aggregate_score: 70,
+                  level: "high",
+                  current_excitement: 70,
+                  recent_excitement: 68,
+                  expected_remaining_excitement: 75,
+                  reason_codes: ["recent_goal"]
+                },
+                criticality: {
+                  score: 65,
+                  level: "medium",
+                  reason_codes: ["group_stage_points"]
+                },
+                competitive_balance: {
+                  score: 60,
+                  level: "close"
+                },
+                momentum: {
+                  leading_participant_id: "por",
+                  score: 64,
+                  direction: "rising",
+                  summary: "Portugal has momentum after scoring.",
+                  reason_codes: ["recent_goal"]
+                },
+                live_predictions: {
+                  win_probabilities: [
+                    {
+                      participant_id: "por",
+                      probability: 0.72
+                    },
+                    {
+                      participant_id: "uzb",
+                      probability: 0.28
+                    }
+                  ],
+                  win_probability_changes: [
+                    {
+                      participant_id: "por",
+                      last_interval: 0.08
+                    },
+                    {
+                      participant_id: "uzb",
+                      last_interval: -0.08
+                    }
+                  ],
+                  comeback_probability: 0.18,
+                  upset_probability: 0.14,
+                  draw_probability: 0.22,
+                  overtime_or_tiebreak_probability: 0,
+                  likely_next_major_event: "Portugal chance",
+                  expected_remaining_duration_minutes: 67,
+                  prediction_confidence: 0.81
+                },
+                summary: {
+                  headline: "Portugal leads 1-0",
+                  short_byte: "Portugal ahead in Houston.",
+                  key_points: ["Live match", "Portugal scored first"]
+                },
+                freshness: {
+                  generated_at: "2026-06-23T17:31:00Z",
+                  source_observation_time: "2026-06-23T17:30:40Z",
+                  age_seconds: 20
+                },
+                verification: {
+                  status: "verified",
+                  confidence: 0.88,
+                  warnings: []
+                }
+              },
+              freshness: {
+                context_generated_at: "2026-06-23T17:31:00Z",
+                state_generated_at: "2026-06-23T17:31:00Z",
+                context_age_seconds: 20,
+                state_age_seconds: 20
+              }
+            }
+          ],
+          warnings: []
+        });
+      }
+
+      return withWebSearchMetadata({
+        events: [],
+        warnings: []
+      });
+    });
+    const provider = new OpenAiLiveEventDiscoveryProvider(transport);
+
+    const result = await provider.discover({
+      region: "north-america",
+      sport: "soccer",
+      include_context: true,
+      known_matches: []
+    });
+
+    expect(transport.createStructuredResponse).toHaveBeenCalledTimes(2);
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0].context?.match.match_name).toBe(
+      "Portugal vs Uzbekistan"
+    );
+    expect(result.events[0].context?.participants).toHaveLength(2);
+    expect(result.events[0].context?.participants[1]?.name).toBe("Uzbekistan");
+    expect(result.warnings[0]).toContain("second-pass live recheck");
   });
 
   it("filters low-confidence schedule-only live events from discovery", async () => {
@@ -351,6 +571,200 @@ describe("OpenAI providers", () => {
     expect(result.events).toHaveLength(0);
     expect(result.warnings[0]).toContain("excluded from live results");
     expect(result.provider_debug?.openai_web_search?.tool_invoked).toBe(true);
+  });
+
+  it("rejects pre-match placeholder fixtures returned by live discovery with a specific reason", async () => {
+    const futureKickoff = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const transport = createTransport(() =>
+      withWebSearchMetadata({
+        events: [
+          {
+            match_id: "soccer:test:future-live-placeholder",
+            context_status: "new",
+            context_fingerprint: "ctx_future_demo",
+            context: {
+              match: {
+                match_id: "soccer:test:future-live-placeholder",
+                match_name: "Portugal vs Uzbekistan",
+                sport: "soccer",
+                tournament_name: "World Cup",
+                tournament_stage: "Group K",
+                scheduled_start_time: futureKickoff,
+                venue: {
+                  stadium: "NRG Stadium",
+                  city: "Houston",
+                  state: "Texas",
+                  country: "United States"
+                }
+              },
+              participants: [
+                {
+                  participant_id: "por",
+                  name: "Portugal",
+                  short_name: "POR",
+                  role: "home",
+                  ranking: null,
+                  recent_form: []
+                }
+              ],
+              pre_match_intelligence: {
+                headline: "Portugal faces Uzbekistan in Group K",
+                summary: "Kickoff is scheduled for later today.",
+                expected_competitiveness: 60,
+                key_matchup: "Portugal midfield vs Uzbekistan defense"
+              },
+              context_version: 1,
+              context_fingerprint: "ctx_future_demo",
+              context_generated_at: new Date().toISOString()
+            },
+            live_state: {
+              match_id: "soccer:test:future-live-placeholder",
+              match_status: "unverified",
+              period: {
+                code: "1H",
+                display: "1st Half"
+              },
+              clock: {
+                display: "00:00",
+                elapsed_seconds: 0,
+                remaining_seconds: 5400
+              },
+              score: {
+                participant_scores: [
+                  {
+                    participant_id: "por",
+                    display_score: "0",
+                    numeric_score: 0
+                  },
+                  {
+                    participant_id: "uzb",
+                    display_score: "0",
+                    numeric_score: 0
+                  }
+                ],
+                display: "0-0",
+                score_differential: 0
+              },
+              sport_specific: {
+                phase: null
+              },
+              current_possession_or_control: {
+                participant_id: null,
+                description: ""
+              },
+              active_players: [],
+              what_is_happening: {
+                headline: "Match has not yet started",
+                summary: "The match between Portugal and Uzbekistan is scheduled to begin later today.",
+                situation_code: "pre_match",
+                key_entity_ids: []
+              },
+              last_major_event: {
+                event_id: "evt_1",
+                event_type: "status",
+                participant_id: "por",
+                player_id: null,
+                description: "Match has not yet started",
+                match_time: new Date().toISOString(),
+                event_importance: 0
+              },
+              recent_events: [],
+              special_state: {
+                is_timeout: false,
+                is_under_review: false,
+                is_injury_delay: false,
+                is_weather_delay: false,
+                is_overtime_or_tiebreak: false
+              },
+              excitement: {
+                aggregate_score: 50,
+                level: "medium",
+                current_excitement: 50,
+                recent_excitement: 50,
+                expected_remaining_excitement: 50,
+                reason_codes: []
+              },
+              criticality: {
+                score: 50,
+                level: "medium",
+                reason_codes: []
+              },
+              competitive_balance: {
+                score: 50,
+                level: "even"
+              },
+              momentum: {
+                leading_participant_id: "",
+                score: 0,
+                direction: "neutral",
+                summary: "No significant events have occurred yet.",
+                reason_codes: []
+              },
+              live_predictions: {
+                win_probabilities: [
+                  {
+                    participant_id: "por",
+                    probability: 0.65
+                  },
+                  {
+                    participant_id: "uzb",
+                    probability: 0.35
+                  }
+                ],
+                win_probability_changes: [],
+                comeback_probability: 0.1,
+                upset_probability: 0.2,
+                draw_probability: 0.3,
+                overtime_or_tiebreak_probability: 0.1,
+                likely_next_major_event: "kickoff",
+                expected_remaining_duration_minutes: 90,
+                prediction_confidence: 0.8
+              },
+              summary: {
+                headline: "Upcoming match: Portugal vs Uzbekistan",
+                short_byte: "Match scheduled to start later today.",
+                key_points: ["Match not yet started"]
+              },
+              freshness: {
+                generated_at: new Date().toISOString(),
+                source_observation_time: new Date().toISOString(),
+                age_seconds: 0
+              },
+              verification: {
+                status: "unverified",
+                confidence: 0.9,
+                warnings: []
+              }
+            },
+            freshness: {
+              context_generated_at: new Date().toISOString(),
+              state_generated_at: new Date().toISOString(),
+              context_age_seconds: 0,
+              state_age_seconds: 0
+            }
+          }
+        ],
+        warnings: []
+      })
+    );
+    const provider = new OpenAiLiveEventDiscoveryProvider(transport);
+
+    const result = await provider.discover({
+      region: "north-america",
+      sport: "soccer",
+      include_context: true,
+      known_matches: []
+    });
+
+    expect(result.events).toHaveLength(0);
+    expect(result.provider_debug?.result_filtering?.raw_event_count).toBe(1);
+    expect(result.provider_debug?.result_filtering?.accepted_event_count).toBe(0);
+    expect(result.provider_debug?.result_filtering?.rejected_events?.[0]?.reason).toContain(
+      "pre-match or future-kickoff state"
+    );
+    expect(result.warnings[0]).toContain(
+      "pre-match or future-kickoff state"
+    );
   });
 
   it("normalizes percent-style probability fields before live-state validation", async () => {

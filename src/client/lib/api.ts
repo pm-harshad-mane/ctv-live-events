@@ -4,10 +4,17 @@ import type {
   LiveContextResponseData,
   LiveStateResponseData,
   StateRefreshResponseData,
+  TrackerArchiveDetailResponseData,
+  TrackerArchiveListResponseData,
   UpcomingCollectionResponseData,
   UpcomingMatchResponseData
 } from "../../shared/types/api";
-import type { MatchIdentity, ProviderMode } from "../../shared/schemas/live";
+import type {
+  MatchIdentity,
+  ProviderMode,
+  RequestOrigin,
+  TrackerArchiveCreateInput
+} from "../../shared/schemas/live";
 
 type Envelope<T> = {
   data: T;
@@ -87,6 +94,7 @@ export const discoverLiveEvents = async (
     region: string;
     sport: string;
     include_context?: boolean;
+    request_origin?: RequestOrigin;
     known_matches?: Array<{ match_id: string; context_fingerprint: string }>;
   },
   signal?: AbortSignal
@@ -105,6 +113,7 @@ export const refreshLiveStates = async (
   input: {
     region: string;
     sport: string;
+    request_origin?: RequestOrigin;
     matches: MatchIdentity[];
   },
   signal?: AbortSignal
@@ -124,13 +133,15 @@ export const fetchUpcomingEvents = async (
     region: string;
     sport: string;
     days: number;
+    request_origin?: RequestOrigin;
   },
   signal?: AbortSignal
 ): Promise<ApiResult<UpcomingCollectionResponseData>> => {
   const params = new URLSearchParams({
     region: input.region,
     sport: input.sport,
-    days: String(input.days)
+    days: String(input.days),
+    request_origin: input.request_origin ?? "unknown"
   });
   return requestJson<UpcomingCollectionResponseData>(
     `/api/v1/events/upcoming?${params.toString()}`,
@@ -170,6 +181,44 @@ export const fetchUpcomingMatch = async (
   const result = await requestJson<UpcomingMatchResponseData>(
     `/api/v1/events/upcoming/${encodeURIComponent(matchId)}`,
     undefined,
+    signal
+  );
+  return result.data;
+};
+
+export const fetchTrackerArchives = async (
+  signal?: AbortSignal
+): Promise<TrackerArchiveListResponseData> => {
+  const result = await requestJson<TrackerArchiveListResponseData>(
+    "/api/v1/tracker/archives",
+    undefined,
+    signal
+  );
+  return result.data;
+};
+
+export const fetchTrackerArchive = async (
+  archiveId: string,
+  signal?: AbortSignal
+): Promise<TrackerArchiveDetailResponseData> => {
+  const result = await requestJson<TrackerArchiveDetailResponseData>(
+    `/api/v1/tracker/archives/${encodeURIComponent(archiveId)}`,
+    undefined,
+    signal
+  );
+  return result.data;
+};
+
+export const saveTrackerArchive = async (
+  input: TrackerArchiveCreateInput,
+  signal?: AbortSignal
+): Promise<TrackerArchiveDetailResponseData> => {
+  const result = await requestJson<TrackerArchiveDetailResponseData>(
+    "/api/v1/tracker/archives",
+    {
+      method: "POST",
+      body: JSON.stringify(input)
+    },
     signal
   );
   return result.data;

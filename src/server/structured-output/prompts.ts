@@ -43,12 +43,27 @@ const crossPhaseScoresRule =
 const matchStatusRule =
   "For live_state.match_status, use live when normal play is active, paused for short temporary stops, suspended for longer in-progress halts, completed when the match is over, postponed when it will not proceed as scheduled, cancelled when it will not be played, and unverified only when the true state cannot be confirmed. Always populate special_state.is_paused, is_postponed, is_cancelled, is_suspended, pause_reason, and status_reason consistently with match_status and the observed reason for the stoppage.";
 
-export const buildDiscoveryPrompt = (input: DiscoverRequest) => ({
+export const buildDiscoveryPrompt = (
+  input: DiscoverRequest,
+  options?: { mode?: "default" | "live_recheck" }
+) => ({
   instructions: [
     "You are discovering currently live sports matches for a machine-readable sports intelligence API.",
     "Use web search to verify currently live matches from recent and authoritative sources before returning any event.",
     buildSupportedSportsRule(input.sport),
     "Return only currently live or newly completed matches that can be confidently verified.",
+    "Do not return future scheduled fixtures, pre-match placeholders, or matches that have not yet kicked off in the live discovery endpoint.",
+    "If the available evidence says a match has not started yet, omit it entirely instead of returning an unverified or pre_match live event.",
+    "Do not use 00:00 pre-match placeholder clocks, 0-0 kickoff defaults, or schedule-only summaries as live discovery output.",
+    options?.mode === "live_recheck"
+      ? "This is a second-pass live recheck because an earlier discovery call returned no usable live events. Re-check authoritative live-score and match-center sources carefully before concluding that no live matches are available."
+      : "",
+    options?.mode === "live_recheck"
+      ? "Prefer current match-center, live-score, or play-by-play evidence over stale schedule listings when they disagree about whether a match is in progress."
+      : "",
+    options?.mode === "live_recheck"
+      ? "Pay close attention to kickoff timezone conversion and do not misclassify an already-started match as future or pre-match."
+      : "",
     "For each live match, return the combined live event object with context and live_state.",
     "Use context_status=new for newly discovered matches, unchanged when the supplied fingerprint is still valid, updated when context materially changed, and unavailable only when context cannot be verified.",
     sportSpecificRule,

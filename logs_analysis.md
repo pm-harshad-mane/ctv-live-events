@@ -6,6 +6,19 @@ Source log directory:
 
 - [logs/ai-responses](/Users/harshadmane/Desktop/GitHub/ctv-live-events/logs/ai-responses)
 
+Saved log entries can now be segmented not only by backend schema but also by
+UI/request source through `request.request_origin`:
+
+- `live_page`
+- `tracker`
+- `upcoming_page`
+- `unknown`
+
+That means future log reviews should group results by both:
+
+- `schema_name`
+- `request.request_origin`
+
 Sample cutoff used for this analysis:
 
 - `2026-06-18T18:18:23Z`
@@ -26,6 +39,14 @@ The requests included:
 - live discovery
 - live state refresh
 - upcoming retrieval
+
+At the time of this sample, older logs did not yet carry `request_origin`, so
+this document is still grouped mainly by schema. Future analyses should use the
+new origin field to separate:
+
+- normal live-page refresh traffic
+- single-match tracker refresh traffic
+- upcoming-page traffic
 
 ## What Changed Before This Sample
 
@@ -49,6 +70,29 @@ Included log count after the cutoff: `13`
 | `live_state_refresh_response` | `success` | 3 |
 | `upcoming_events_response` | `success` | 3 |
 | `upcoming_events_response` | `parse_error` | 2 |
+
+## How To Group Future Log Reviews
+
+Now that logs include `request.request_origin`, the preferred grouping for
+future analysis is:
+
+1. `provider`
+2. `model`
+3. `schema_name`
+4. `request.request_origin`
+5. `phase`
+
+Examples:
+
+- `openai + live_discovery_response + live_page`
+- `openai + live_state_refresh_response + tracker`
+- `gemini + upcoming_events_response + upcoming_page`
+
+This is especially important because:
+
+- tracker calls and live-page periodic refreshes both use
+  `live_state_refresh_response`
+- without `request_origin`, they look identical in raw log filenames
 
 ### By sport
 

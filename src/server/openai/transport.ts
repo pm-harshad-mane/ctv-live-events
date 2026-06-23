@@ -156,6 +156,37 @@ const extractCompleteTopLevelObjects = (
   return objects;
 };
 
+const salvageLateTruncatedLiveDiscoveryEvent = (
+  value: string
+): string | null => {
+  const trimmed = unwrapJsonText(value).trim();
+  if (!trimmed.startsWith('{"events":[{')) {
+    return null;
+  }
+
+  if (
+    !trimmed.includes('"live_state":{') ||
+    !trimmed.includes('"summary":{') ||
+    trimmed.includes('"verification":{')
+  ) {
+    return null;
+  }
+
+  const liveStateFreshnessIndex = trimmed.lastIndexOf(',"freshness":{');
+  if (liveStateFreshnessIndex === -1) {
+    return null;
+  }
+
+  const generatedAtMatch = trimmed.match(
+    /"context_generated_at":"([^"]+)"/
+  );
+  const inferredTimestamp =
+    generatedAtMatch?.[1] ?? new Date().toISOString();
+
+  const eventBody = trimmed.slice(0, liveStateFreshnessIndex);
+  return `${eventBody},"freshness":{"generated_at":"${inferredTimestamp}","source_observation_time":"${inferredTimestamp}","age_seconds":0},"verification":{"status":"partially_verified","confidence":0.5,"warnings":["Recovered from truncated provider response."]}},"freshness":{"context_generated_at":"${inferredTimestamp}","state_generated_at":"${inferredTimestamp}","context_age_seconds":0,"state_age_seconds":0}}],"warnings":["Recovered truncated live discovery response."]}`;
+};
+
 const extractWebSearchMetadata = (
   payload: unknown
 ): OpenAiStructuredResponseMetadata => {
@@ -301,6 +332,13 @@ const buildSchemaRepairCandidates = (
       candidates.add(
         `{"events":[${completeEvents.join(",")}],"warnings":[]}`
       );
+    }
+
+    if (schemaName === "live_discovery_response") {
+      const salvagedEvent = salvageLateTruncatedLiveDiscoveryEvent(text);
+      if (salvagedEvent) {
+        candidates.add(salvagedEvent);
+      }
     }
   }
 
@@ -481,6 +519,7 @@ export class OpenAiResponsesTransport implements StructuredResponseTransport {
         request: {
           instructions: request.instructions,
           input: request.input,
+          request_origin: request.requestOrigin,
           max_output_tokens: request.maxOutputTokens,
           tools: request.tools,
           tool_choice: request.toolChoice,
@@ -509,6 +548,7 @@ export class OpenAiResponsesTransport implements StructuredResponseTransport {
         request: {
           instructions: request.instructions,
           input: request.input,
+          request_origin: request.requestOrigin,
           max_output_tokens: request.maxOutputTokens,
           tools: request.tools,
           tool_choice: request.toolChoice,

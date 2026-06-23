@@ -3,6 +3,11 @@ import { getEnv } from "./config/env";
 import { requireApiAccess } from "./http/auth";
 import { withCors } from "./http/cors";
 import { createRequestId, sendEnvelope, sendError } from "./lib/http";
+import {
+  listTrackerArchives,
+  readTrackerArchive,
+  saveTrackerArchive
+} from "./lib/tracker-archive";
 import { getOpenApiDocument } from "./openapi/document";
 import {
   MockLiveEventDiscoveryProvider,
@@ -32,6 +37,7 @@ import {
   discoverRequestSchema,
   providerModeSchema,
   stateRefreshRequestSchema,
+  trackerArchiveCreateSchema,
   upcomingQuerySchema
 } from "../shared/schemas/live";
 
@@ -83,7 +89,12 @@ export const createApp = () => {
     },
     {
       refreshStates: (input) =>
-        getActiveProviders().stateProvider.refreshStates(input)
+        getActiveProviders().stateProvider.refreshStates({
+          region: input.region ?? env.defaultRegion,
+          sport: input.sport ?? "all",
+          request_origin: input.request_origin ?? "unknown",
+          matches: input.matches ?? []
+        })
     },
     {
       getContext: (matchId) =>
@@ -181,6 +192,7 @@ export const createApp = () => {
   });
 
   app.use("/api/v1/events", requireApiAccess(env));
+  app.use("/api/v1/tracker", requireApiAccess(env));
   app.use("/api/v1/runtime", requireApiAccess(env));
 
   app.post("/api/v1/runtime/model", async (request, response) => {
@@ -202,6 +214,7 @@ export const createApp = () => {
         region: String(request.query.region ?? env.defaultRegion),
         sport: String(request.query.sport ?? "all"),
         include_context: request.query.include_context !== "false",
+        request_origin: String(request.query.request_origin ?? "unknown"),
         known_matches: []
       });
 
@@ -240,6 +253,7 @@ export const createApp = () => {
         region: request.body.region ?? env.defaultRegion,
         sport: request.body.sport ?? "all",
         include_context: request.body.include_context ?? true,
+        request_origin: request.body.request_origin ?? "unknown",
         known_matches: request.body.known_matches ?? []
       });
 
@@ -277,6 +291,7 @@ export const createApp = () => {
       const payload = stateRefreshRequestSchema.parse({
         region: request.body.region ?? env.defaultRegion,
         sport: request.body.sport ?? "all",
+        request_origin: request.body.request_origin ?? "unknown",
         matches: request.body.matches ?? []
       });
 
@@ -420,6 +435,7 @@ export const createApp = () => {
       const payload = upcomingQuerySchema.parse({
         region: String(request.query.region ?? env.defaultRegion),
         sport: String(request.query.sport ?? "all"),
+        request_origin: String(request.query.request_origin ?? "unknown"),
         days: Number(request.query.days ?? env.defaultUpcomingDays)
       });
 
@@ -466,6 +482,49 @@ export const createApp = () => {
       sendEnvelope(response, requestId, { event });
     } catch (error) {
       handleKnownError(response, requestId, error, 500);
+    }
+  });
+
+  app.get("/api/v1/tracker/archives", async (_request, response) => {
+    const requestId = createRequestId();
+    try {
+      const archives = await listTrackerArchives();
+      sendEnvelope(response, requestId, { archives });
+    } catch (error) {
+      handleKnownError(response, requestId, error, 500);
+    }
+  });
+
+  app.get("/api/v1/tracker/archives/:archiveId", async (request, response) => {
+    const requestId = createRequestId();
+    try {
+      const archive = await readTrackerArchive(request.params.archiveId);
+      if (!archive) {
+        sendError(
+          response,
+          requestId,
+          404,
+          "NOT_FOUND",
+          "Tracker archive not found.",
+          false
+        );
+        return;
+      }
+
+      sendEnvelope(response, requestId, { archive });
+    } catch (error) {
+      handleKnownError(response, requestId, error, 500);
+    }
+  });
+
+  app.post("/api/v1/tracker/archives", async (request, response) => {
+    const requestId = createRequestId();
+    try {
+      const payload = trackerArchiveCreateSchema.parse(request.body);
+      const archive = await saveTrackerArchive(payload);
+      sendEnvelope(response, requestId, { archive });
+    } catch (error) {
+      handleKnownError(response, requestId, error);
     }
   });
 

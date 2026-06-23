@@ -379,6 +379,7 @@ export class GeminiStructuredTransport implements StructuredResponseTransport {
         request: {
           instructions: request.instructions,
           input: request.input,
+          request_origin: request.requestOrigin,
           max_output_tokens: request.maxOutputTokens,
           tools: request.tools,
           tool_choice: request.toolChoice,
@@ -407,6 +408,7 @@ export class GeminiStructuredTransport implements StructuredResponseTransport {
         request: {
           instructions: request.instructions,
           input: request.input,
+          request_origin: request.requestOrigin,
           max_output_tokens: request.maxOutputTokens,
           tools: request.tools,
           tool_choice: request.toolChoice,

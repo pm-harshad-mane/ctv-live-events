@@ -1,9 +1,11 @@
 import type {
   DiscoverRequest,
+  DiscoverRequestInput,
   LiveEvent,
   LiveState,
   MatchContext,
   MatchIdentity,
+  UpcomingQueryInput,
   UpcomingEvent
 } from "../../../shared/schemas/live";
 import {
@@ -104,9 +106,55 @@ const hasVerifiedLiveSignal = (state: LiveState): boolean => {
   return !scheduleOnlyLanguage && !(zeroClock && noScore);
 };
 
+const isClearlyPreMatchState = (
+  state: LiveState,
+  context: MatchContext | null
+): boolean => {
+  const headline = state.what_is_happening.headline.toLowerCase();
+  const summary = state.what_is_happening.summary.toLowerCase();
+  const shortByte = state.summary.short_byte.toLowerCase();
+  const text = `${headline} ${summary} ${shortByte}`;
+
+  const preMatchLanguage =
+    text.includes("has not yet started") ||
+    text.includes("scheduled to begin") ||
+    text.includes("match scheduled") ||
+    text.includes("upcoming match") ||
+    state.what_is_happening.situation_code === "pre_match";
+
+  const kickoffPlaceholderClock =
+    state.clock.elapsed_seconds === 0 &&
+    state.clock.display === "00:00" &&
+    state.clock.remaining_seconds >= 3600;
+
+  const zeroScore =
+    state.score.participant_scores.every(
+      (participant) => participant.numeric_score === 0
+    ) && state.score.score_differential === 0;
+
+  const scheduledStartTime = context?.match.scheduled_start_time
+    ? Date.parse(context.match.scheduled_start_time)
+    : Number.NaN;
+  const scheduledInFuture =
+    Number.isFinite(scheduledStartTime) && scheduledStartTime > Date.now();
+
+  return (
+    preMatchLanguage || (kickoffPlaceholderClock && zeroScore) || scheduledInFuture
+  );
+};
+
 const assessLiveStateQuality = (
-  state: LiveState
+  state: LiveState,
+  context: MatchContext | null
 ): { accepted: boolean; reason?: string } => {
+  if (isClearlyPreMatchState(state, context)) {
+    return {
+      accepted: false,
+      reason:
+        "Provider returned a pre-match or future-kickoff state for the live endpoint."
+    };
+  }
+
   if (!["live", "paused", "suspended"].includes(state.match_status)) {
     return {
       accepted: false,
@@ -150,7 +198,19 @@ const assessLiveEventQuality = (
     };
   }
 
-  return assessLiveStateQuality(event.live_state);
+  const stateQuality = assessLiveStateQuality(event.live_state, event.context);
+  if (!stateQuality.accepted) {
+    return stateQuality;
+  }
+
+  if (event.context.participants.length < 2) {
+    return {
+      accepted: false,
+      reason: "Participant details were incomplete for this live match."
+    };
+  }
+
+  return stateQuality;
 };
 
 const assertObject = (
@@ -430,11 +490,77 @@ const normalizeUpcomingEventCandidate = (
   };
 };
 
+const splitMatchNameParticipants = (matchName: unknown): string[] => {
+  if (typeof matchName !== "string") {
+    return [];
+  }
+
+  return matchName
+    .split(/\s+vs\.?\s+/i)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+};
+
+const repairLiveEventContextParticipants = (
+  candidate: Record<string, unknown>
+): Record<string, unknown> => {
+  const context = optionalObject(candidate.context);
+  const match = optionalObject(context.match);
+  const participants = Array.isArray(context.participants)
+    ? context.participants.map((participant) => optionalObject(participant))
+    : [];
+  const liveState = optionalObject(candidate.live_state);
+  const score = optionalObject(liveState.score);
+  const participantScores = Array.isArray(score.participant_scores)
+    ? score.participant_scores.map((entry) => optionalObject(entry))
+    : [];
+
+  if (participants.length >= 2 || participantScores.length < 2) {
+    return candidate;
+  }
+
+  const nameParts = splitMatchNameParticipants(match.match_name);
+  const repairedParticipants = participantScores.slice(0, 2).map((entry, index) => {
+    const existing = participants[index] ?? {};
+    const role = index === 0 ? "home" : "away";
+    const fallbackName = nameParts[index] ?? String(entry.participant_id ?? role);
+
+    return {
+      participant_id: String(
+        existing.participant_id ?? entry.participant_id ?? `${role}-${index + 1}`
+      ),
+      name: String(existing.name ?? fallbackName),
+      short_name:
+        existing.short_name === null || typeof existing.short_name === "string"
+          ? existing.short_name
+          : null,
+      role,
+      ranking:
+        existing.ranking === null || typeof existing.ranking === "string"
+          ? existing.ranking
+          : null,
+      recent_form: Array.isArray(existing.recent_form)
+        ? existing.recent_form.map((value) => String(value))
+        : []
+    };
+  });
+
+  return {
+    ...candidate,
+    context: {
+      ...context,
+      participants: repairedParticipants
+    }
+  };
+};
+
 const normalizeLiveEventCandidate = (
   value: unknown,
   responseObjectLabel: string
 ): unknown => {
-  const candidate = assertObject(value, responseObjectLabel);
+  const candidate = repairLiveEventContextParticipants(
+    assertObject(value, responseObjectLabel)
+  );
 
   return {
     ...candidate,
@@ -561,17 +687,32 @@ export class StructuredSearchLiveEventDiscoveryProvider implements LiveEventDisc
     private readonly flavor: StructuredSearchProviderFlavor
   ) {}
 
-  async discover(input: DiscoverRequest) {
-    const payload = assertObject(
+  private async fetchDiscoveryPayload(
+    input: DiscoverRequest,
+    mode: "default" | "live_recheck" = "default"
+  ) {
+    return assertObject(
       await this.transport.createStructuredResponse({
-        ...buildDiscoveryPrompt(input),
+        ...buildDiscoveryPrompt(input, { mode }),
         ...this.flavor.buildSearchRequest(input.region),
+        requestOrigin: input.request_origin,
         schema: structuredOutputSchemas.discovery,
         maxOutputTokens: 12000
       }),
       this.flavor.responseObjectLabel
     );
-    const providerDebug = this.flavor.getProviderDebug(payload);
+  }
+
+  async discover(input: DiscoverRequestInput) {
+    const normalizedInput: DiscoverRequest = {
+      region: input.region ?? "north-america",
+      sport: input.sport ?? "all",
+      include_context: input.include_context ?? true,
+      request_origin: input.request_origin ?? "unknown",
+      known_matches: input.known_matches ?? []
+    };
+    let payload = await this.fetchDiscoveryPayload(normalizedInput);
+    let providerDebug = this.flavor.getProviderDebug(payload);
     if (
       !this.flavor.wasSearchInvoked(providerDebug) &&
       !this.flavor.allowUngroundedResults
@@ -592,7 +733,7 @@ export class StructuredSearchLiveEventDiscoveryProvider implements LiveEventDisc
       this.flavor
     );
 
-    const rawEvents = Array.isArray(payload.events)
+    let rawEvents = Array.isArray(payload.events)
       ? payload.events.map((event) =>
           liveEventSchema.parse(
             normalizeLiveEventCandidate(event, this.flavor.responseObjectLabel)
@@ -600,16 +741,50 @@ export class StructuredSearchLiveEventDiscoveryProvider implements LiveEventDisc
         )
       : [];
 
+    if (rawEvents.length === 0) {
+      const retryPayload = await this.fetchDiscoveryPayload(
+        normalizedInput,
+        "live_recheck"
+      );
+      const retryProviderDebug = this.flavor.getProviderDebug(retryPayload);
+      if (
+        this.flavor.wasSearchInvoked(retryProviderDebug) ||
+        this.flavor.allowUngroundedResults
+      ) {
+        payload = retryPayload;
+        providerDebug = retryProviderDebug;
+        rawEvents = Array.isArray(retryPayload.events)
+          ? retryPayload.events.map((event) =>
+              liveEventSchema.parse(
+                normalizeLiveEventCandidate(
+                  event,
+                  this.flavor.responseObjectLabel
+                )
+              )
+            )
+          : [];
+        warnings.unshift(
+          "Live discovery returned no raw events on the first pass, so a second-pass live recheck was attempted."
+        );
+        warnings.push(...buildPayloadWarnings(retryPayload));
+      }
+    }
+
     const acceptedEvents: LiveEvent[] = [];
     const rejectedEvents: NonNullable<
       ProviderDebugInfo["result_filtering"]
     >["rejected_events"] = [];
     for (const event of rawEvents) {
-      if (!matchesRequestedSport(input.sport, event.context?.match.sport)) {
+      if (
+        !matchesRequestedSport(
+          normalizedInput.sport,
+          event.context?.match.sport
+        )
+      ) {
         rejectedEvents.push({
           match_id: event.match_id,
           match_name: event.context?.match.match_name,
-          reason: `Filtered out because event sport=${event.context?.match.sport ?? "unknown"} did not match requested sport=${input.sport}.`
+          reason: `Filtered out because event sport=${event.context?.match.sport ?? "unknown"} did not match requested sport=${normalizedInput.sport}.`
         });
         continue;
       }
@@ -650,12 +825,14 @@ export class StructuredSearchLiveEventStateProvider implements LiveEventStatePro
   async refreshStates(input: {
     region: string;
     sport: string;
+    request_origin?: "live_page" | "tracker" | "upcoming_page" | "unknown";
     matches: MatchIdentity[];
   }) {
     const payload = assertObject(
       await this.transport.createStructuredResponse({
         ...buildStateRefreshPrompt(input),
         ...this.flavor.buildSearchRequest(input.region),
+        requestOrigin: input.request_origin,
         schema: structuredOutputSchemas.stateRefresh,
         maxOutputTokens: 8000
       }),
@@ -707,7 +884,7 @@ export class StructuredSearchLiveEventStateProvider implements LiveEventStatePro
 
     const acceptedStates: LiveState[] = [];
     for (const state of states) {
-      const quality = assessLiveStateQuality(state);
+      const quality = assessLiveStateQuality(state, null);
       if (quality.accepted) {
         acceptedStates.push(state);
         continue;
@@ -818,11 +995,18 @@ export class StructuredSearchUpcomingEventProvider implements UpcomingEventProvi
     private readonly flavor: StructuredSearchProviderFlavor
   ) {}
 
-  async getUpcoming(input: { region: string; sport: string; days: number }) {
+  async getUpcoming(input: UpcomingQueryInput) {
+    const normalizedInput = {
+      region: input.region ?? "north-america",
+      sport: input.sport ?? "all",
+      days: input.days ?? 7,
+      request_origin: input.request_origin ?? "unknown"
+    };
     const payload = assertObject(
       await this.transport.createStructuredResponse({
-        ...buildUpcomingPrompt(input),
-        ...this.flavor.buildSearchRequest(input.region),
+        ...buildUpcomingPrompt(normalizedInput),
+        ...this.flavor.buildSearchRequest(normalizedInput.region),
+        requestOrigin: normalizedInput.request_origin,
         schema: structuredOutputSchemas.upcoming
       }),
       this.flavor.responseObjectLabel
@@ -855,11 +1039,16 @@ export class StructuredSearchUpcomingEventProvider implements UpcomingEventProvi
     >["rejected_events"] = [];
 
     for (const event of rawEvents) {
-      if (!matchesRequestedSport(input.sport, event.context.match.sport)) {
+      if (
+        !matchesRequestedSport(
+          normalizedInput.sport,
+          event.context.match.sport
+        )
+      ) {
         rejectedEvents.push({
           match_id: event.match_id,
           match_name: event.context.match.match_name,
-          reason: `Filtered out because event sport=${event.context.match.sport} did not match requested sport=${input.sport}.`
+          reason: `Filtered out because event sport=${event.context.match.sport} did not match requested sport=${normalizedInput.sport}.`
         });
         continue;
       }

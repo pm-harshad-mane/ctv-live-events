@@ -6,13 +6,15 @@ import { LiveMatchTracker } from "./components/LiveMatchTracker";
 import { UpcomingCard } from "./components/UpcomingCard";
 import { useLiveEvents } from "./hooks/useLiveEvents";
 
-type AppPage = "live" | "upcoming" | "tracker";
+type AppPage = "live" | "upcoming" | "tracker" | "history";
 
 const getPageFromHash = (): AppPage =>
   window.location.hash === "#/upcoming"
     ? "upcoming"
     : window.location.hash === "#/tracker"
       ? "tracker"
+      : window.location.hash === "#/history"
+        ? "history"
       : "live";
 
 export const App = () => {
@@ -27,6 +29,7 @@ export const App = () => {
     selectedLiveMatchDetail,
     selectedUpcomingMatchDetail,
     trackedLiveEvent,
+    trackableEvents,
     trackerHistory,
     liveWarnings,
     upcomingWarnings,
@@ -50,6 +53,12 @@ export const App = () => {
     trackerStatusMessage,
     trackerError,
     trackerLastUpdatedAt,
+    trackerArchives,
+    selectedTrackerArchive,
+    selectedTrackerArchiveId,
+    archiveLoading,
+    archiveError,
+    archiveStatusMessage,
     hasLoadedLiveOnce,
     hasLoadedUpcomingOnce,
     config,
@@ -61,10 +70,12 @@ export const App = () => {
     selectLiveMatch,
     selectUpcomingMatch,
     selectTrackedLiveMatch,
+    selectTrackerArchive,
     clearDetailSelection,
     changeActiveModel,
     loadLiveNow,
     loadUpcomingNow,
+    loadTrackerArchivesNow,
     refreshStateNow,
     refreshTrackedMatchNow,
     rediscoverNow,
@@ -129,6 +140,14 @@ export const App = () => {
             }`}
           >
             Tracker
+          </a>
+          <a
+            href="#/history"
+            className={`page-nav__link ${
+              activePage === "history" ? "page-nav__link--active" : ""
+            }`}
+          >
+            History
           </a>
         </nav>
 
@@ -256,17 +275,21 @@ export const App = () => {
                 : "Load upcoming matches"}
             </button>
           </div>
-        ) : (
+        ) : activePage === "tracker" ? (
           <>
             <label className="toolbar__field toolbar__field--wide">
               <span>Tracked Match</span>
               <select
                 value={trackedLiveMatchId ?? ""}
                 onChange={(event) => selectTrackedLiveMatch(event.target.value)}
-                disabled={liveLoading || events.length === 0}
+                disabled={liveLoading || trackableEvents.length === 0}
               >
-                <option value="">Select one live match</option>
-                {events.map((event) => (
+                <option value="">
+                  {trackableEvents.length > 0
+                    ? "Select one live match"
+                    : "No trackable live match available"}
+                </option>
+                {trackableEvents.map((event) => (
                   <option key={event.match_id} value={event.match_id}>
                     {event.context?.match.match_name ?? event.match_id}
                   </option>
@@ -285,6 +308,7 @@ export const App = () => {
               >
                 <option value={60}>1 minute</option>
                 <option value={180}>3 minutes</option>
+                <option value={300}>5 minutes</option>
                 <option value={420}>7 minutes</option>
                 <option value={600}>10 minutes</option>
               </select>
@@ -316,6 +340,43 @@ export const App = () => {
                 />
                 <span>Periodic tracker updates</span>
               </label>
+            </div>
+          </>
+        ) : (
+          <>
+            <label className="toolbar__field toolbar__field--wide">
+              <span>Archived Event</span>
+              <select
+                value={selectedTrackerArchiveId ?? ""}
+                onChange={(event) => selectTrackerArchive(event.target.value)}
+                disabled={archiveLoading || trackerArchives.length === 0}
+              >
+                <option value="">
+                  {trackerArchives.length > 0
+                    ? "Select archived tracker event"
+                    : "No archived tracked events available"}
+                </option>
+                {trackerArchives.map((archive) => (
+                  <option
+                    key={archive.archive_id}
+                    value={archive.archive_id}
+                  >
+                    {archive.match_name} · {new Date(
+                      archive.archived_at
+                    ).toLocaleDateString()}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="toolbar__actions">
+              <button
+                type="button"
+                onClick={() => void loadTrackerArchivesNow()}
+                disabled={archiveLoading}
+              >
+                Reload archived events
+              </button>
             </div>
           </>
         )}
@@ -356,7 +417,7 @@ export const App = () => {
             </ul>
           ) : null}
         </section>
-      ) : (
+      ) : activePage === "tracker" ? (
         <section className="status-panel">
           <p>{trackerStatusMessage}</p>
           {trackerLastUpdatedAt ? (
@@ -385,6 +446,13 @@ export const App = () => {
                 <li key={warning}>{warning}</li>
               ))}
             </ul>
+          ) : null}
+        </section>
+      ) : (
+        <section className="status-panel">
+          <p>{archiveStatusMessage}</p>
+          {archiveError ? (
+            <p className="status-panel__error">{archiveError}</p>
           ) : null}
         </section>
       )}
@@ -474,7 +542,7 @@ export const App = () => {
             </div>
           )}
         </section>
-      ) : (
+      ) : activePage === "tracker" ? (
         <section className="section-block">
           <div className="section-header">
             <div>
@@ -496,6 +564,11 @@ export const App = () => {
               event={trackedLiveEvent}
               history={trackerHistory}
             />
+          ) : events.length > 0 && trackableEvents.length === 0 ? (
+            <div className="empty-state">
+              Current live payloads were too weak or inconsistent to start a
+              reliable tracker session.
+            </div>
           ) : events.length === 0 ? (
             <div className="empty-state">
               No live {filters.sport === "all" ? "events" : filters.sport}{" "}
@@ -505,6 +578,32 @@ export const App = () => {
             <div className="empty-state">
               Choose one of the current live matches from the tracker controls
               to start recording score trends.
+            </div>
+          )}
+        </section>
+      ) : (
+        <section className="section-block">
+          <div className="section-header">
+            <div>
+              <p className="hero__kicker">Tracker History</p>
+              <h2>Past tracked events.</h2>
+            </div>
+          </div>
+          {archiveLoading && !selectedTrackerArchive ? (
+            <div className="loading-state">Loading archived tracked events...</div>
+          ) : selectedTrackerArchive ? (
+            <LiveMatchTracker
+              event={selectedTrackerArchive.event}
+              history={selectedTrackerArchive.history}
+            />
+          ) : trackerArchives.length > 0 ? (
+            <div className="empty-state">
+              Choose one of the archived tracked events from the history
+              controls to review its time series.
+            </div>
+          ) : (
+            <div className="empty-state">
+              No completed tracked events have been archived yet.
             </div>
           )}
         </section>

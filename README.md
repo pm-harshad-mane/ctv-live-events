@@ -27,6 +27,94 @@ The UI is split into two pages:
 
 Each page uses the same backend API contract that external consumers would use.
 
+## Generated Scores
+
+The app generates machine-friendly score blocks for both live and upcoming matches.
+
+Unless noted otherwise, these scores are normalized to a `0-100` range, where higher
+means “more of that thing.”
+
+### Live-only scores
+
+These live under `live_state.watchability` and represent the current moment in the match:
+
+- `current_score`
+  overall “worth watching right now” score
+- `tension_score`
+  how tense or high-pressure the current state feels
+- `scoring_imminence_score`
+  how likely a score-changing event feels soon
+- `swing_potential_score`
+  how likely the game could swing materially in the near term
+- `state_clarity_score`
+  how clean and interpretable the live state is for programmatic consumers
+- `evidence_strength_score`
+  how strong the underlying evidence is for the live read
+
+### Cross-phase scores
+
+These exist for both live and upcoming matches under `cross_phase_scores`:
+
+- `stakes_score`
+  competitive importance of the match
+- `star_power_score`
+  draw created by teams and players involved
+- `upset_potential_score`
+  how plausible and compelling a surprise result is
+- `narrative_strength_score`
+  strength of the story around the match: rivalry, standings, tournament arc, revenge, etc.
+
+### Upcoming-only scores
+
+These live under `upcoming_intelligence.audience_signals` and help rank scheduled matches:
+
+- `audience_interest_score`
+  overall appeal for a broad audience
+- `stakes_score`
+  competitive consequences of the upcoming match
+- `star_power_score`
+  strength of the player/team-name draw
+- `volatility_score`
+  how open, eventful, or swingy the match is expected to be
+- `upset_potential_score`
+  how live and interesting a surprise result looks before kickoff
+- `narrative_strength_score`
+  how strong the pre-match story angle is
+
+### Other important live scores
+
+These were part of the earlier compact dynamic-state model and are still used:
+
+- `excitement.aggregate_score`
+- `excitement.current_excitement`
+- `excitement.recent_excitement`
+- `excitement.expected_remaining_excitement`
+- `criticality.score`
+- `competitive_balance.score`
+- `momentum.score`
+
+### Additional ranking score
+
+Upcoming matches also expose:
+
+- `projected_competitiveness`
+  expected competitiveness of the match as a whole
+
+### Probabilities
+
+The API also returns probability-style values:
+
+- live win probabilities
+- upcoming win probabilities
+- `win_probability_changes`
+- `prediction_confidence`
+- `comeback_probability`
+- `upset_probability`
+- `draw_probability`
+- `overtime_or_tiebreak_probability`
+
+In the API, probabilities are stored as `0..1`. In the UI, they are shown as percentages.
+
 ## Tech Stack
 
 - React 18

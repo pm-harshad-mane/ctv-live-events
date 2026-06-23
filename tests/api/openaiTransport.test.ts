@@ -323,6 +323,65 @@ describe("OpenAI transport", () => {
     });
   });
 
+  it("salvages a late-truncated live discovery event near live_state freshness", async () => {
+    requestMock.mockImplementation((_options, callback) => {
+      const response = new EventEmitter() as EventEmitter & {
+        statusCode?: number;
+        setEncoding: (encoding: string) => void;
+      };
+      response.statusCode = 200;
+      response.setEncoding = () => {};
+
+      const request = new EventEmitter() as EventEmitter & {
+        setTimeout: (ms: number, cb: () => void) => void;
+        write: (chunk: string) => void;
+        end: () => void;
+      };
+      request.setTimeout = (_ms, _cb) => {};
+      request.write = () => {};
+      request.end = () => {
+        callback(response);
+        response.emit(
+          "data",
+          JSON.stringify(
+            buildPayload(
+              '{"events":[{"match_id":"2026-06-23-ENG-GHA","context_status":"new","context_fingerprint":"2026-06-23-ENG-GHA","context":{"match":{"match_id":"2026-06-23-ENG-GHA","match_name":"England vs Ghana","sport":"soccer","tournament_name":"FIFA World Cup 2026","tournament_stage":"Group L","scheduled_start_time":"2026-06-23T20:00:00-04:00","venue":{"stadium":"Gillette Stadium","city":"Boston","state":"Massachusetts","country":"USA"}},"participants":[{"participant_id":"ENG","name":"England","short_name":"ENG","role":"home","ranking":null,"recent_form":[]}],"pre_match_intelligence":{"headline":"England faces Ghana in Group L clash","summary":"England takes on Ghana in a crucial Group L match at Gillette Stadium in Boston.","expected_competitiveness":80,"key_matchup":"England midfield vs Ghana defense"},"context_version":1,"context_fingerprint":"2026-06-23-ENG-GHA","context_generated_at":"2026-06-23T16:10:21-04:00"},"live_state":{"match_id":"2026-06-23-ENG-GHA","match_status":"live","period":{"code":"1H","display":"1st Half"},"clock":{"display":"45:00","elapsed_seconds":2700,"remaining_seconds":0},"score":{"participant_scores":[{"participant_id":"ENG","display_score":"1","numeric_score":1},{"participant_id":"GHA","display_score":"0","numeric_score":0}],"display":"1-0","score_differential":1},"sport_specific":{"quarter":null,"shot_clock_seconds":null,"foul_pressure":null,"phase":null,"stoppage_time_minutes":null,"pressure_side":null,"attacking_side":null,"possession_team":"ENG","down":null,"distance_yards":null,"yard_line":null,"red_zone":null,"inning":null,"innings_half":null,"outs":null,"balls":null,"strikes":null,"runners_on_base":null,"over":null,"wickets":null,"run_rate":null,"target_runs":null,"power_play":null,"period_number":1,"pulled_goalie":null,"current_set":null,"set_score":null,"serve_side":null,"break_point_pressure":null,"round":null,"control_time_seconds":null,"finish_threat":null},"current_possession_or_control":{"participant_id":"ENG","description":"England maintains possession in Ghana half."},"active_players":[{"player_id":"ENG-9","player_name":"Harry Kane","participant_id":"ENG","role":"forward","status":"active","impact_summary":"Scored the opening goal.","key_metrics":[{"label":"Goals","value":"1"}]}],"what_is_happening":{"headline":"England leads Ghana 1-0 at halftime","summary":"England leads Ghana 1-0 at halftime.","situation_code":"HALF_TIME","key_entity_ids":["ENG-9"]},"last_major_event":{"event_id":"2026-06-23-ENG-GHA-1","event_type":"goal","participant_id":"ENG","player_id":"ENG-9","description":"Harry Kane scores the opening goal.","match_time":"2026-06-23T20:35:00-04:00","event_importance":80},"recent_events":[{"description":"Harry Kane scores the opening goal.","match_time":"2026-06-23T20:35:00-04:00"}],"special_state":{"is_timeout":false,"is_under_review":false,"is_injury_delay":false,"is_weather_delay":false,"is_overtime_or_tiebreak":false,"is_paused":false,"is_postponed":false,"is_cancelled":false,"is_suspended":false,"pause_reason":null,"status_reason":null},"excitement":{"aggregate_score":75,"level":"high","current_excitement":80,"recent_excitement":70,"expected_remaining_excitement":85,"reason_codes":["goal_scored","close_match"]},"criticality":{"score":80,"level":"high","reason_codes":["must_win_match","tournament_stage"]},"competitive_balance":{"score":70,"level":"medium_high"},"watchability":{"current_score":80,"tension_score":75,"scoring_imminence_score":70,"swing_potential_score":65,"state_clarity_score":90,"evidence_strength_score":95},"cross_phase_scores":{"stakes_score":85,"star_power_score":80,"upset_potential_score":60,"narrative_strength_score":70},"momentum":{"leading_participant_id":"ENG","score":1,"direction":"up","summary":"England has gained momentum after scoring.","reason_codes":["goal_scored"]},"live_predictions":{"win_probabilities":[{"participant_id":"ENG","probability":0.75},{"participant_id":"GHA","probability":0.25}],"win_probability_changes":[{"participant_id":"ENG","last_interval":0.05},{"participant_id":"GHA","last_interval":-0.05}],"comeback_probability":0.25,"upset_probability":0.15,"draw_probability":0.10,"overtime_or_tiebreak_probability":0.05,"likely_next_major_event":"England to score another goal","expected_remaining_duration_minutes":45,"prediction_confidence":0.85},"summary":{"headline":"England leads Ghana 1-0 at halftime","short_byte":"England leads 1-0 at halftime.","key_points":["Harry Kane goal"]},"freshness":{"generated_at":"2026-06-23T16:10:21-04:00","source_observation_time":"202'
+            )
+          )
+        );
+        response.emit("end");
+      };
+      return request;
+    });
+
+    const { OpenAiResponsesTransport } = await import(
+      "../../src/server/openai/transport"
+    );
+    const transport = new OpenAiResponsesTransport(createEnv());
+    const result = await transport.createStructuredResponse({
+      instructions: "test",
+      input: "{}",
+      schema: {
+        name: "live_discovery_response",
+        schema: { type: "object" }
+      }
+    });
+
+    expect(result).toMatchObject({
+      events: [
+        {
+          match_id: "2026-06-23-ENG-GHA",
+          live_state: {
+            match_status: "live",
+            score: {
+              display: "1-0"
+            }
+          }
+        }
+      ]
+    });
+  });
+
   it("salvages complete upcoming events when the response is truncated mid-event", async () => {
     requestMock.mockImplementation((_options, callback) => {
       const response = new EventEmitter() as EventEmitter & {

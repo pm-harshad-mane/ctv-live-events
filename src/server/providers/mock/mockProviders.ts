@@ -1,6 +1,8 @@
 import type {
-  DiscoverRequest,
-  MatchIdentity
+  DiscoverRequestInput,
+  MatchIdentity,
+  StateRefreshRequestInput,
+  UpcomingQueryInput
 } from "../../../shared/schemas/live";
 import type {
   LiveEventDiscoveryProvider,
@@ -19,10 +21,11 @@ import {
 } from "./mockData";
 
 export class MockLiveEventDiscoveryProvider implements LiveEventDiscoveryProvider {
-  async discover(input: DiscoverRequest) {
+  async discover(input: DiscoverRequestInput) {
+    const knownMatches = input.known_matches ?? [];
     const knownFingerprints = new Map(
-      input.known_matches.map(
-        (match: DiscoverRequest["known_matches"][number]) => [
+      knownMatches.map(
+        (match: NonNullable<DiscoverRequestInput["known_matches"]>[number]) => [
           match.match_id,
           match.context_fingerprint
         ]
@@ -31,9 +34,9 @@ export class MockLiveEventDiscoveryProvider implements LiveEventDiscoveryProvide
     return {
       events: discoverMockEvents(
         knownFingerprints,
-        input.include_context,
-        input.sport,
-        input.region
+        input.include_context ?? true,
+        input.sport ?? "all",
+        input.region ?? "north-america"
       ),
       warnings: []
     };
@@ -41,13 +44,9 @@ export class MockLiveEventDiscoveryProvider implements LiveEventDiscoveryProvide
 }
 
 export class MockLiveEventStateProvider implements LiveEventStateProvider {
-  async refreshStates(input: {
-    region: string;
-    sport: string;
-    matches: MatchIdentity[];
-  }) {
+  async refreshStates(input: StateRefreshRequestInput) {
     return {
-      states: refreshMockStates(input.matches),
+      states: refreshMockStates(input.matches ?? []),
       failed_matches: [],
       warnings: []
     };
@@ -69,9 +68,13 @@ export class MockLiveEventLookupProvider implements LiveEventLookupProvider {
 }
 
 export class MockUpcomingEventProvider implements UpcomingEventProvider {
-  async getUpcoming(input: { region: string; sport: string; days: number }) {
+  async getUpcoming(input: UpcomingQueryInput) {
     return {
-      events: listMockUpcomingEvents(input.region, input.sport, input.days),
+      events: listMockUpcomingEvents(
+        input.region ?? "north-america",
+        input.sport ?? "all",
+        input.days ?? 7
+      ),
       warnings: []
     };
   }

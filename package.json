@@ -12,6 +12,7 @@
     "build": "run-s build:client build:server",
     "build:client": "vite build",
     "build:server": "tsc -p tsconfig.server.json",
+    "track:match": "tsx scripts/track-match.ts",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

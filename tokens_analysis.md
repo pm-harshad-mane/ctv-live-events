@@ -25,6 +25,30 @@ Analyzed API flows:
   - live state lookup
   - upcoming lookup
 
+Saved AI logs can now also be grouped by UI/request source via
+`request.request_origin` in each log entry:
+
+- `live_page`
+- `tracker`
+- `upcoming_page`
+- `unknown`
+
+That matters for cost analysis because the same backend schema can be used by
+multiple UI surfaces. For example:
+
+- the `Live` page periodic refresh uses `live_state_refresh_response` with
+  `request_origin = "live_page"`
+- the single-match tracker uses `live_state_refresh_response` with
+  `request_origin = "tracker"`
+
+When analyzing real cost from saved logs, do not group only by `schema_name`.
+Group by:
+
+- `provider`
+- `schema_name`
+- `request.request_origin`
+- `phase`
+
 ## Important Note
 
 These are **estimates**, not exact billed token counts.
@@ -57,6 +81,30 @@ For collection endpoints, I measured both:
 
 - a 1-match case
 - a larger multi-match case
+
+## Using Saved Logs
+
+When working from real saved AI logs in
+[logs/ai-responses](/Users/harshadmane/Desktop/GitHub/ctv-live-events/logs/ai-responses),
+use these fields together:
+
+- `provider`
+- `schema_name`
+- `request.request_origin`
+- `phase`
+- `model`
+
+Recommended grouping examples:
+
+- `openai + live_state_refresh_response + tracker`
+- `openai + live_state_refresh_response + live_page`
+- `gemini + upcoming_events_response + upcoming_page`
+
+This makes it possible to measure:
+
+- tracker-specific cost separately from the general live page
+- upcoming-page cost separately from live discovery/state refresh
+- provider/model differences for the same UI surface
 
 ## Key Finding
 

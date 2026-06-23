@@ -91,19 +91,27 @@ describe("AI response logger", () => {
         phase: "success",
         request: {
           instructions: "system prompt",
-          input: "user input"
+          input: "user input",
+          request_origin: "tracker"
         },
         metadata: { grounded: true },
         structured_output: { match_id: "abc" }
       }
     );
 
-    const files = readdirSync(logDir);
+    const dayDirs = readdirSync(logDir);
+    expect(dayDirs).toHaveLength(1);
+    const eventDirs = readdirSync(join(logDir, dayDirs[0]));
+    expect(eventDirs).toEqual(["abc"]);
+    const files = readdirSync(join(logDir, dayDirs[0], eventDirs[0]));
     expect(files).toHaveLength(1);
-    const payload = JSON.parse(readFileSync(join(logDir, files[0]), "utf8"));
+    const payload = JSON.parse(
+      readFileSync(join(logDir, dayDirs[0], eventDirs[0], files[0]), "utf8")
+    );
     expect(payload.provider).toBe("gemini");
     expect(payload.schema_name).toBe("live_state_response");
     expect(payload.request.instructions).toBe("system prompt");
+    expect(payload.request.request_origin).toBe("tracker");
     expect(payload.structured_output.match_id).toBe("abc");
   });
 });

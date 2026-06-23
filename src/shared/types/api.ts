@@ -4,6 +4,8 @@ import type {
   MatchIdentity,
   MatchContext,
   PublicConfig,
+  TrackerArchive,
+  TrackerArchiveSummary,
   UpcomingEvent
 } from "../schemas/live";
 
@@ -157,3 +159,11 @@ export type UpcomingMatchResponseData = {
 };
 
 export type KnownMatchIdentity = MatchIdentity;
+
+export type TrackerArchiveListResponseData = {
+  archives: TrackerArchiveSummary[];
+};
+
+export type TrackerArchiveDetailResponseData = {
+  archive: TrackerArchive;
+};

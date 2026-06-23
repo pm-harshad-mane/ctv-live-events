@@ -44,6 +44,7 @@ describe("API service and middleware", () => {
 
     expect(config.api_version).toBe("v1");
     expect(config.ai_service_available).toBe(true);
+    expect(config.active_model_request_timeout_ms).toBe(45000);
     expect(config.use_mock_data).toBe(true);
     expect(config.active_model).toBe("mock");
     expect(config.available_models).toEqual([

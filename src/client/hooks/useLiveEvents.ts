@@ -6,14 +6,20 @@ import type {
   MatchIdentity,
   ProviderMode,
   PublicConfig,
+  TrackerArchive,
+  TrackerArchiveSummary,
+  TrackerHistoryPoint,
   UpcomingEvent
 } from "../../shared/schemas/live";
 import {
   ApiError,
   discoverLiveEvents,
   fetchConfig,
+  fetchTrackerArchive,
+  fetchTrackerArchives,
   fetchUpcomingEvents,
   refreshLiveStates,
+  saveTrackerArchive as persistTrackerArchive,
   switchActiveModel
 } from "../lib/api";
 
@@ -28,12 +34,31 @@ type LiveMatchDetail = {
   liveState: LiveState;
 };
 
-type TrackerHistoryPoint = {
-  capturedAt: string;
-  liveState: LiveState;
-};
-
 const TRACKER_IDLE_MESSAGE = "Choose a live match to track.";
+const ARCHIVE_IDLE_MESSAGE = "Choose a completed tracked event to review.";
+const TRACKER_TIMEOUT_BUFFER_MS = 15000;
+const TERMINAL_MATCH_STATUSES = new Set(["completed", "cancelled", "postponed"]);
+
+const normalizeScheduledStart = (value: string | undefined): string =>
+  value ? new Date(value).toISOString() : "";
+
+const getLiveEventSemanticKey = (event: LiveEvent): string => {
+  const context = event.context;
+  if (!context) {
+    return event.match_id;
+  }
+
+  const participantKey = context.participants
+    .map((participant) => participant.name.trim().toLowerCase())
+    .sort()
+    .join("|");
+
+  return [
+    context.match.sport,
+    normalizeScheduledStart(context.match.scheduled_start_time),
+    participantKey
+  ].join("::");
+};
 
 const buildIdentity = (event: LiveEvent): MatchIdentity => ({
   match_id: event.match_id,
@@ -85,34 +110,14 @@ const mergeDiscovery = (
   currentEvents: LiveEvent[],
   incomingEvents: LiveEvent[]
 ): LiveEvent[] => {
-  const normalizeScheduledStart = (value: string | undefined): string =>
-    value ? new Date(value).toISOString() : "";
-
-  const semanticKeyForEvent = (event: LiveEvent): string => {
-    const context = event.context;
-    if (!context) {
-      return event.match_id;
-    }
-
-    const participantKey = context.participants
-      .map((participant) => participant.name.trim().toLowerCase())
-      .sort()
-      .join("|");
-
-    return [
-      context.match.sport,
-      normalizeScheduledStart(context.match.scheduled_start_time),
-      participantKey
-    ].join("::");
-  };
-
   const byId = new Map(currentEvents.map((event) => [event.match_id, event]));
   const bySemanticKey = new Map(
-    currentEvents.map((event) => [semanticKeyForEvent(event), event])
+    currentEvents.map((event) => [getLiveEventSemanticKey(event), event])
   );
   for (const incoming of incomingEvents) {
     const existing =
-      byId.get(incoming.match_id) ?? bySemanticKey.get(semanticKeyForEvent(incoming));
+      byId.get(incoming.match_id) ??
+      bySemanticKey.get(getLiveEventSemanticKey(incoming));
     const acceptedState =
       existing && !shouldAcceptLiveStateUpdate(existing.live_state, incoming.live_state)
         ? existing.live_state
@@ -201,10 +206,20 @@ const getAggregateNumericScore = (state: LiveState): number =>
     0
   );
 
+const getSafeWatchability = (state: LiveState) =>
+  state.watchability ?? {
+    current_score: 0,
+    tension_score: 0,
+    scoring_imminence_score: 0,
+    swing_potential_score: 0,
+    state_clarity_score: 0,
+    evidence_strength_score: 0
+  };
+
 const isGenericFallbackState = (state: LiveState): boolean => {
   const headline = state.summary.headline.trim().toLowerCase();
   const shortByte = state.summary.short_byte.trim().toLowerCase();
-  const watchability = state.watchability;
+  const watchability = getSafeWatchability(state);
 
   return (
     GENERIC_LIVE_HEADLINES.has(headline) ||
@@ -265,6 +280,75 @@ const shouldAcceptLiveStateUpdate = (
   }
 
   return true;
+};
+
+const isClearlyWeakLiveSnapshot = (state: LiveState): boolean => {
+  const watchability = getSafeWatchability(state);
+  const zeroOrGenericWatchability =
+    watchability.current_score <= 50 &&
+    watchability.tension_score <= 50 &&
+    watchability.scoring_imminence_score <= 50 &&
+    watchability.swing_potential_score <= 50 &&
+    watchability.state_clarity_score <= 50 &&
+    watchability.evidence_strength_score <= 50;
+
+  const zeroedCoreScores =
+    state.excitement.aggregate_score === 0 &&
+    state.criticality.score === 0 &&
+    state.competitive_balance.score === 0 &&
+    state.momentum.score === 0;
+
+  const preKickoffLikeClock =
+    state.clock.elapsed_seconds === 0 &&
+    state.clock.display === "00:00" &&
+    state.clock.remaining_seconds >= 3600;
+
+  const noScoringProgress =
+    getAggregateNumericScore(state) === 0 && state.score.score_differential === 0;
+
+  return (
+    hasInvalidScoreData(state) ||
+    state.match_status === "unverified" ||
+    (preKickoffLikeClock && noScoringProgress && zeroOrGenericWatchability) ||
+    (isGenericFallbackState(state) && noScoringProgress) ||
+    zeroedCoreScores
+  );
+};
+
+const getLiveEventStrength = (event: LiveEvent): number => {
+  const state = event.live_state;
+  const watchability = getSafeWatchability(state);
+
+  return (
+    state.verification.confidence * 1000 +
+    getAggregateNumericScore(state) * 100 +
+    watchability.current_score * 10 +
+    state.excitement.aggregate_score * 5 +
+    state.clock.elapsed_seconds / 60
+  );
+};
+
+const getTrackableEvents = (events: LiveEvent[]): LiveEvent[] => {
+  const bestBySemanticKey = new Map<string, LiveEvent>();
+
+  for (const event of events) {
+    if (!event.context || event.context.participants.length < 2) {
+      continue;
+    }
+
+    if (isClearlyWeakLiveSnapshot(event.live_state)) {
+      continue;
+    }
+
+    const semanticKey = getLiveEventSemanticKey(event);
+    const existing = bestBySemanticKey.get(semanticKey);
+
+    if (!existing || getLiveEventStrength(event) > getLiveEventStrength(existing)) {
+      bestBySemanticKey.set(semanticKey, event);
+    }
+  }
+
+  return Array.from(bestBySemanticKey.values());
 };
 
 const appendTrackerHistory = (
@@ -350,16 +434,37 @@ export const useLiveEvents = () => {
   const [trackerStatusMessage, setTrackerStatusMessage] =
     useState(TRACKER_IDLE_MESSAGE);
   const [trackerError, setTrackerError] = useState<string | null>(null);
+  const [trackerArchives, setTrackerArchives] = useState<TrackerArchiveSummary[]>(
+    []
+  );
+  const [selectedTrackerArchiveId, setSelectedTrackerArchiveId] = useState<
+    string | null
+  >(null);
+  const [selectedTrackerArchive, setSelectedTrackerArchive] =
+    useState<TrackerArchive | null>(null);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [archiveStatusMessage, setArchiveStatusMessage] = useState(
+    ARCHIVE_IDLE_MESSAGE
+  );
+  const [archiveReloadToken, setArchiveReloadToken] = useState(0);
   const [reloadToken, setReloadToken] = useState(0);
   const liveControllerRef = useRef<AbortController | null>(null);
   const upcomingControllerRef = useRef<AbortController | null>(null);
   const configControllerRef = useRef<AbortController | null>(null);
   const detailControllerRef = useRef<AbortController | null>(null);
+  const archiveControllerRef = useRef<AbortController | null>(null);
+  const archiveDetailControllerRef = useRef<AbortController | null>(null);
+  const lastArchivedTrackerPointRef = useRef<string | null>(null);
 
   const eventIdentities = useMemo(() => events.map(buildIdentity), [events]);
   const manualFetchMode = config ? !config.use_mock_data : false;
+  const trackableEvents = useMemo(() => getTrackableEvents(events), [events]);
   const trackedLiveEvent = trackedLiveSnapshot;
   const trackerLastUpdatedAt = trackerHistory.at(-1)?.capturedAt ?? null;
+  const trackerRequestTimeoutMs = config
+    ? config.active_model_request_timeout_ms + TRACKER_TIMEOUT_BUFFER_MS
+    : 60000;
 
   const resetLoadedState = (nextConfig: PublicConfig) => {
     liveControllerRef.current?.abort();
@@ -383,6 +488,11 @@ export const useLiveEvents = () => {
     setTrackerLoading(false);
     setTrackerError(null);
     setTrackerStatusMessage(TRACKER_IDLE_MESSAGE);
+    setSelectedTrackerArchiveId(null);
+    setSelectedTrackerArchive(null);
+    setArchiveLoading(false);
+    setArchiveError(null);
+    setArchiveStatusMessage(ARCHIVE_IDLE_MESSAGE);
     setDetailStatus("idle");
     setDetailError(null);
     setHasLoadedLiveOnce(false);
@@ -447,6 +557,65 @@ export const useLiveEvents = () => {
   }, [reloadToken]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    archiveControllerRef.current?.abort();
+    archiveControllerRef.current = controller;
+    setArchiveLoading(true);
+    setArchiveError(null);
+
+    void fetchTrackerArchives(controller.signal)
+      .then((payload) => {
+        setTrackerArchives(payload.archives);
+        setArchiveStatusMessage(
+          payload.archives.length > 0
+            ? `Loaded ${payload.archives.length} archived tracked event${payload.archives.length === 1 ? "" : "s"}.`
+            : "No archived tracked events are available yet."
+        );
+      })
+      .catch((error) => {
+        if ((error as Error).name === "AbortError") {
+          return;
+        }
+        setArchiveError((error as Error).message);
+        setArchiveStatusMessage("Unable to load archived tracked events.");
+      })
+      .finally(() => setArchiveLoading(false));
+
+    return () => controller.abort();
+  }, [archiveReloadToken]);
+
+  useEffect(() => {
+    if (!selectedTrackerArchiveId) {
+      setSelectedTrackerArchive(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    archiveDetailControllerRef.current?.abort();
+    archiveDetailControllerRef.current = controller;
+    setArchiveLoading(true);
+    setArchiveError(null);
+
+    void fetchTrackerArchive(selectedTrackerArchiveId, controller.signal)
+      .then((payload) => {
+        setSelectedTrackerArchive(payload.archive);
+        setArchiveStatusMessage(
+          `Viewing archived tracker for ${payload.archive.summary.match_name}.`
+        );
+      })
+      .catch((error) => {
+        if ((error as Error).name === "AbortError") {
+          return;
+        }
+        setArchiveError((error as Error).message);
+        setArchiveStatusMessage("Unable to load archived tracker.");
+      })
+      .finally(() => setArchiveLoading(false));
+
+    return () => controller.abort();
+  }, [selectedTrackerArchiveId]);
+
+  useEffect(() => {
     if (!selectedLiveMatchId) {
       setSelectedLiveMatchDetail(null);
       if (!selectedUpcomingMatchId) {
@@ -489,7 +658,8 @@ export const useLiveEvents = () => {
 
     if (!trackedLiveSnapshot || !trackedLiveSnapshot.context) {
       const nextTrackedEvent =
-        events.find((event) => event.match_id === trackedLiveMatchId) ?? null;
+        trackableEvents.find((event) => event.match_id === trackedLiveMatchId) ??
+        null;
       if (nextTrackedEvent) {
         setTrackedLiveSnapshot(nextTrackedEvent);
       } else {
@@ -524,7 +694,7 @@ export const useLiveEvents = () => {
       return current;
     });
   }, [
-    events,
+    trackableEvents,
     trackedLiveMatchId,
     trackedLiveSnapshot,
     trackerPollingIntervalSeconds,
@@ -638,7 +808,8 @@ export const useLiveEvents = () => {
           {
             region: filters.region,
             sport: filters.sport,
-            include_context: true
+            include_context: true,
+            request_origin: "live_page"
           },
           controller.signal
         );
@@ -710,7 +881,8 @@ export const useLiveEvents = () => {
           {
             region: filters.region,
             sport: filters.sport,
-            days: upcomingDays
+            days: upcomingDays,
+            request_origin: "upcoming_page"
           },
           controller.signal
         );
@@ -798,6 +970,7 @@ export const useLiveEvents = () => {
       {
         region: filters.region,
         sport: filters.sport,
+        request_origin: "live_page",
         matches: eventIdentities
       },
       controller.signal
@@ -885,6 +1058,7 @@ export const useLiveEvents = () => {
         region: filters.region,
         sport: filters.sport,
         include_context: true,
+        request_origin: "live_page",
         known_matches: events.map((event) => ({
           match_id: event.match_id,
           context_fingerprint: event.context_fingerprint
@@ -962,7 +1136,10 @@ export const useLiveEvents = () => {
     }
 
     const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 45000);
+    const timeout = window.setTimeout(
+      () => controller.abort(),
+      trackerRequestTimeoutMs
+    );
 
     setTrackerLoading(true);
     setTrackerError(null);
@@ -975,6 +1152,7 @@ export const useLiveEvents = () => {
         {
           region: filters.region,
           sport: filters.sport,
+          request_origin: "tracker",
           matches: [buildIdentity(trackedLiveSnapshot)]
         },
         controller.signal
@@ -1084,8 +1262,41 @@ export const useLiveEvents = () => {
     trackedLiveMatchId,
     trackerCountdown,
     trackerLoading,
+    trackerRequestTimeoutMs,
     trackerUpdatesEnabled
   ]);
+
+  useEffect(() => {
+    if (
+      !trackedLiveSnapshot ||
+      trackerHistory.length === 0 ||
+      !TERMINAL_MATCH_STATUSES.has(trackedLiveSnapshot.live_state.match_status)
+    ) {
+      return;
+    }
+
+    const lastCapturedAt = trackerHistory.at(-1)?.capturedAt;
+    if (!lastCapturedAt) {
+      return;
+    }
+
+    const archiveKey = `${trackedLiveSnapshot.match_id}:${lastCapturedAt}`;
+    if (lastArchivedTrackerPointRef.current === archiveKey) {
+      return;
+    }
+
+    lastArchivedTrackerPointRef.current = archiveKey;
+    void persistTrackerArchive({
+      event: trackedLiveSnapshot,
+      history: trackerHistory
+    })
+      .then(() => {
+        setArchiveReloadToken((current) => current + 1);
+      })
+      .catch(() => {
+        lastArchivedTrackerPointRef.current = null;
+      });
+  }, [trackedLiveSnapshot, trackerHistory]);
 
   const rediscoverNow = async () => {
     if (!config || !hasLoadedLiveOnce) {
@@ -1153,7 +1364,7 @@ export const useLiveEvents = () => {
 
     setTrackedLiveMatchId(matchId);
     setTrackedLiveSnapshot(
-      events.find((event) => event.match_id === matchId) ?? null
+      trackableEvents.find((event) => event.match_id === matchId) ?? null
     );
     setTrackerHistory([]);
     setTrackerCountdown(trackerPollingIntervalSeconds);
@@ -1171,9 +1382,18 @@ export const useLiveEvents = () => {
     setDetailError(null);
   };
 
+  const loadTrackerArchivesNow = async () => {
+    setArchiveReloadToken((current) => current + 1);
+  };
+
+  const selectTrackerArchive = (archiveId: string) => {
+    setSelectedTrackerArchiveId(archiveId || null);
+  };
+
   return {
     config,
     events,
+    trackableEvents,
     trackedLiveEvent,
     trackerHistory,
     upcomingEvents,
@@ -1206,6 +1426,12 @@ export const useLiveEvents = () => {
     trackerStatusMessage,
     trackerError,
     trackerLastUpdatedAt,
+    trackerArchives,
+    selectedTrackerArchive,
+    selectedTrackerArchiveId,
+    archiveLoading,
+    archiveError,
+    archiveStatusMessage,
     hasLoadedLiveOnce,
     hasLoadedUpcomingOnce,
     setFilters,
@@ -1216,9 +1442,11 @@ export const useLiveEvents = () => {
     selectLiveMatch,
     selectUpcomingMatch,
     selectTrackedLiveMatch,
+    selectTrackerArchive,
     clearDetailSelection,
     loadLiveNow,
     loadUpcomingNow,
+    loadTrackerArchivesNow,
     refreshStateNow,
     refreshTrackedMatchNow,
     rediscoverNow,

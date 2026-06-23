@@ -301,12 +301,17 @@ select {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.event-card--upcoming .event-card__score-grid--dense {
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+}
+
 .event-card__score-grid--compact {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .event-card__probability,
 .event-card__metric {
+  min-width: 0;
   padding: 12px 14px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.04);
@@ -318,8 +323,10 @@ select {
   display: block;
   color: #aeb9cd;
   font-size: 0.78rem;
+  line-height: 1.1;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  overflow-wrap: anywhere;
 }
 
 .event-card__probability strong,

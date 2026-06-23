@@ -1,15 +1,18 @@
 import type {
-  DiscoverRequest,
+  DiscoverRequestInput,
   LiveEvent,
   LiveState,
   MatchContext,
   MatchIdentity,
+  RequestOrigin,
+  StateRefreshRequestInput,
+  UpcomingQueryInput,
   UpcomingEvent
 } from "../../shared/schemas/live";
 import type { ProviderDebugInfo } from "../../shared/types/api";
 
 export interface LiveEventDiscoveryProvider {
-  discover(input: DiscoverRequest): Promise<{
+  discover(input: DiscoverRequestInput): Promise<{
     events: LiveEvent[];
     warnings: string[];
     provider_debug?: ProviderDebugInfo;
@@ -17,11 +20,7 @@ export interface LiveEventDiscoveryProvider {
 }
 
 export interface LiveEventStateProvider {
-  refreshStates(input: {
-    region: string;
-    sport: string;
-    matches: MatchIdentity[];
-  }): Promise<{
+  refreshStates(input: StateRefreshRequestInput): Promise<{
     states: LiveState[];
     failed_matches: Array<{
       match_id: string;
@@ -40,7 +39,7 @@ export interface LiveEventLookupProvider {
 }
 
 export interface UpcomingEventProvider {
-  getUpcoming(input: { region: string; sport: string; days: number }): Promise<{
+  getUpcoming(input: UpcomingQueryInput): Promise<{
     events: UpcomingEvent[];
     warnings: string[];
     provider_debug?: ProviderDebugInfo;

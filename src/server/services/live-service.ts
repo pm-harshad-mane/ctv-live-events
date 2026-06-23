@@ -7,14 +7,14 @@ import type {
 } from "../providers/types";
 import type { UpcomingEventProvider } from "../providers/types";
 import type {
-  DiscoverRequest,
+  DiscoverRequestInput,
   MatchContext,
   MatchIdentity,
   ProviderMode,
   ProviderOption,
   PublicConfig,
   UpcomingEvent,
-  UpcomingQuery
+  UpcomingQueryInput
 } from "../../shared/schemas/live";
 
 export class AiDisabledError extends Error {
@@ -39,11 +39,16 @@ export class LiveService {
 
   async getConfig(): Promise<PublicConfig> {
     const runtimeProviderConfig = this.getRuntimeProviderConfig();
+    const activeModelRequestTimeoutMs =
+      runtimeProviderConfig.activeMode === "gemini"
+        ? this.env.geminiRequestTimeoutMs
+        : this.env.openAiRequestTimeoutMs;
     return {
       api_version: "v1",
       ai_service_available: await this.aiAccessController.isAiEnabled(),
       discovery_refresh_after_seconds: this.env.liveDiscoveryRefreshSeconds,
       state_refresh_after_seconds: this.env.liveStateRefreshSeconds,
+      active_model_request_timeout_ms: activeModelRequestTimeoutMs,
       max_live_events: this.env.maxLiveEvents,
       public_api_access: this.env.publicApiAccess,
       use_mock_data: runtimeProviderConfig.activeMode === "mock",
@@ -52,7 +57,7 @@ export class LiveService {
     };
   }
 
-  async discover(input: DiscoverRequest) {
+  async discover(input: DiscoverRequestInput) {
     await this.assertAiEnabled();
     return this.discoveryProvider.discover(input);
   }
@@ -60,6 +65,7 @@ export class LiveService {
   async refreshStates(input: {
     region: string;
     sport: string;
+    request_origin?: "live_page" | "tracker" | "upcoming_page" | "unknown";
     matches: MatchIdentity[];
   }) {
     await this.assertAiEnabled();
@@ -81,15 +87,21 @@ export class LiveService {
     return this.lookupProvider.getState(matchId);
   }
 
-  async getUpcoming(input: UpcomingQuery) {
+  async getUpcoming(input: UpcomingQueryInput) {
     await this.assertAiEnabled();
-    if (input.days > this.env.maxUpcomingDays) {
+    const normalizedInput = {
+      region: input.region ?? this.env.defaultRegion,
+      sport: input.sport ?? "all",
+      days: input.days ?? this.env.defaultUpcomingDays,
+      request_origin: input.request_origin ?? "unknown"
+    };
+    if (normalizedInput.days > this.env.maxUpcomingDays) {
       throw new Error(
         `Requested days exceeds MAX_UPCOMING_DAYS (${this.env.maxUpcomingDays}).`
       );
     }
 
-    const result = await this.upcomingProvider.getUpcoming(input);
+    const result = await this.upcomingProvider.getUpcoming(normalizedInput);
     return {
       ...result,
       events: result.events.slice(0, this.env.maxUpcomingEvents)

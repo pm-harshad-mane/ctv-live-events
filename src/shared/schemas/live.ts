@@ -279,10 +279,18 @@ export const liveEventSchema = z.object({
   })
 });
 
+export const requestOriginSchema = z.enum([
+  "live_page",
+  "tracker",
+  "upcoming_page",
+  "unknown"
+]);
+
 export const discoverRequestSchema = z.object({
   region: z.string().default("north-america"),
   sport: z.string().default("all"),
   include_context: z.boolean().default(true),
+  request_origin: requestOriginSchema.default("unknown"),
   known_matches: z
     .array(
       z.object({
@@ -296,6 +304,7 @@ export const discoverRequestSchema = z.object({
 export const stateRefreshRequestSchema = z.object({
   region: z.string().default("north-america"),
   sport: z.string().default("all"),
+  request_origin: requestOriginSchema.default("unknown"),
   matches: z.array(matchIdentitySchema).max(50)
 });
 
@@ -355,6 +364,7 @@ export const upcomingEventSchema = z.object({
 export const upcomingQuerySchema = z.object({
   region: z.string().default("north-america"),
   sport: z.string().default("all"),
+  request_origin: requestOriginSchema.default("unknown"),
   days: z.number().int().positive().max(30).default(7)
 });
 
@@ -370,6 +380,7 @@ export const configSchema = z.object({
   ai_service_available: z.boolean(),
   discovery_refresh_after_seconds: z.number().int().positive(),
   state_refresh_after_seconds: z.number().int().positive(),
+  active_model_request_timeout_ms: z.number().int().positive(),
   max_live_events: z.number().int().positive(),
   public_api_access: z.boolean(),
   use_mock_data: z.boolean(),
@@ -377,15 +388,53 @@ export const configSchema = z.object({
   available_models: z.array(providerOptionSchema).min(1)
 });
 
+export const trackerHistoryPointSchema = z.object({
+  capturedAt: isoDatetimeSchema,
+  liveState: liveStateSchema
+});
+
+export const trackerArchiveSummarySchema = z.object({
+  archive_id: z.string().min(1),
+  archived_at: isoDatetimeSchema,
+  match_id: z.string().min(1),
+  match_name: z.string().min(1),
+  sport: z.string().min(1),
+  tournament_name: z.string().min(1),
+  scheduled_start_time: isoDatetimeSchema,
+  venue_summary: z.string().min(1),
+  final_status: z.string().min(1),
+  final_score_display: z.string().min(1),
+  history_points: z.number().int().nonnegative()
+});
+
+export const trackerArchiveSchema = z.object({
+  summary: trackerArchiveSummarySchema,
+  event: liveEventSchema,
+  history: z.array(trackerHistoryPointSchema).min(1)
+});
+
+export const trackerArchiveCreateSchema = z.object({
+  event: liveEventSchema,
+  history: z.array(trackerHistoryPointSchema).min(1)
+});
+
 export type Participant = z.infer<typeof participantSchema>;
 export type MatchIdentity = z.infer<typeof matchIdentitySchema>;
 export type MatchContext = z.infer<typeof matchContextSchema>;
 export type LiveState = z.infer<typeof liveStateSchema>;
 export type LiveEvent = z.infer<typeof liveEventSchema>;
+export type DiscoverRequestInput = z.input<typeof discoverRequestSchema>;
 export type DiscoverRequest = z.infer<typeof discoverRequestSchema>;
+export type StateRefreshRequestInput = z.input<typeof stateRefreshRequestSchema>;
 export type StateRefreshRequest = z.infer<typeof stateRefreshRequestSchema>;
 export type UpcomingEvent = z.infer<typeof upcomingEventSchema>;
+export type UpcomingQueryInput = z.input<typeof upcomingQuerySchema>;
 export type UpcomingQuery = z.infer<typeof upcomingQuerySchema>;
 export type PublicConfig = z.infer<typeof configSchema>;
 export type ProviderMode = z.infer<typeof providerModeSchema>;
 export type ProviderOption = z.infer<typeof providerOptionSchema>;
+export type RequestOrigin = z.infer<typeof requestOriginSchema>;
+export type TrackerHistoryPoint = z.infer<typeof trackerHistoryPointSchema>;
+export type TrackerArchiveSummary = z.infer<typeof trackerArchiveSummarySchema>;
+export type TrackerArchive = z.infer<typeof trackerArchiveSchema>;
+export type TrackerArchiveCreateInput = z.infer<typeof trackerArchiveCreateSchema>;

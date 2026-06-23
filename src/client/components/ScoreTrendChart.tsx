@@ -8,6 +8,8 @@ type ScoreTrendChartProps = {
 const CHART_WIDTH = 220;
 const CHART_HEIGHT = 88;
 const CHART_PADDING = 10;
+const MIN_CHART_VALUE = 0;
+const MAX_CHART_VALUE = 100;
 
 const formatTimeLabel = (timestamp: string): string =>
   new Date(timestamp).toLocaleTimeString([], {
@@ -25,15 +27,15 @@ export const ScoreTrendChart = ({
     points.length > 0
       ? points
       : [{ timestamp: new Date().toISOString(), value: 0 }];
-  const values = safePoints.map((point) => point.value);
-  const rawMinValue = Math.min(...values);
-  const rawMaxValue = Math.max(...values);
-  const useFixedScale = rawMinValue === rawMaxValue;
-  const minValue = useFixedScale ? 0 : rawMinValue;
-  const maxValue = useFixedScale ? 100 : rawMaxValue;
+  const minValue = MIN_CHART_VALUE;
+  const maxValue = MAX_CHART_VALUE;
   const range = maxValue - minValue || 1;
 
   const chartPoints = safePoints.map((point, index) => {
+    const clampedValue = Math.max(
+      minValue,
+      Math.min(maxValue, point.value)
+    );
     const x =
       safePoints.length === 1
         ? CHART_WIDTH / 2
@@ -43,7 +45,8 @@ export const ScoreTrendChart = ({
     const y =
       CHART_HEIGHT -
       CHART_PADDING -
-      ((point.value - minValue) / range) * (CHART_HEIGHT - CHART_PADDING * 2);
+      ((clampedValue - minValue) / range) *
+        (CHART_HEIGHT - CHART_PADDING * 2);
 
     return { x, y };
   });

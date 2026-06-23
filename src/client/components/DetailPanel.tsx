@@ -980,10 +980,6 @@ export const DetailPanel = ({
           <div className="detail-hero__meta">
             <span>{upcomingEvent?.context.match.tournament_name}</span>
             <span>{upcomingEvent?.context.match.tournament_stage}</span>
-            <span>
-              Competitiveness{" "}
-              {upcomingEvent?.upcoming_intelligence.projected_competitiveness}
-            </span>
           </div>
           <div className="detail-hero__scoreline">
             <div>
