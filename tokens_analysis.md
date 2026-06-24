@@ -138,6 +138,219 @@ That means:
 | Live state lookup, single match | 2812 | 992 | Smaller than full live lookup |
 | Upcoming lookup, single match | 879 | 398 | Similar to upcoming collection with 1 result |
 
+## England vs Ghana Case Study
+
+This section uses the real saved AI logs for the `England vs Ghana` World Cup
+match on `2026-06-23`.
+
+Source set:
+
+- provider: `gemini`
+- match variants seen in log folders:
+  - `england_ghana_20260623`
+  - `fwc2026_eng_gha`
+  - `wc_2026_group_l_england_ghana`
+  - `world_cup_2026_eng_gha`
+
+Method:
+
+- same rough token estimator used elsewhere in this document:
+  - `estimated_tokens = ceil(characters / 4)`
+- input estimate includes:
+  - request instructions
+  - serialized request input
+  - serialized tools list
+  - max output token setting when present
+- output estimate in this case study is based on the saved
+  `structured_output` field
+- parse-error logs are counted separately because they often have no usable
+  structured output
+
+### Log Volume
+
+Saved England/Ghana AI logs found:
+
+- total logs: `96`
+- provider split:
+  - `gemini`: `96`
+
+Schema / phase split:
+
+| Schema | Success | Parse error | Total |
+|---|---:|---:|---:|
+| `live_discovery_response` | 12 | 5 | 17 |
+| `live_state_refresh_response` | 55 | 24 | 79 |
+
+### Per-Call Averages From Real Logs
+
+| Flow | Count | Avg input tokens | Avg structured-output tokens |
+|---|---:|---:|---:|
+| Live discovery success | 12 | 1303 | 1801 |
+| Live discovery parse error | 5 | 1324 | ~0 |
+| Live state refresh success | 55 | 1361 | 1573 |
+| Live state refresh parse error | 24 | 1392 | ~0 |
+
+### Request-Origin Breakdown
+
+This same match generated logs from both the general live page and the
+single-match tracker.
+
+| Request origin | Flow | Success | Parse error | Avg input tokens | Avg structured-output tokens |
+|---|---|---:|---:|---:|---:|
+| `live_page` | `live_discovery_response` | 8 | 5 | 1324 | 1833 on success |
+| `live_page` | `live_state_refresh_response` | 21 | 15 | 1439 | 1578 on success |
+| `tracker` | `live_discovery_response` | 3 | 0 | 1261 | 1771 on success |
+| `tracker` | `live_state_refresh_response` | 34 | 9 | 1312 on success / 1313 on parse error | 1570 on success |
+
+### Tracker-Specific Totals
+
+For the tracker-origin requests for this single match:
+
+- successful discovery calls:
+  - count: `3`
+  - total estimated input tokens: `3783`
+  - total estimated structured-output tokens: `5314`
+- successful state refresh calls:
+  - count: `34`
+  - total estimated input tokens: `44623`
+  - total estimated structured-output tokens: `53388`
+- failed state refresh parse-error calls:
+  - count: `9`
+  - total estimated input tokens still spent: `11815`
+
+Practical tracker total for this match:
+
+- successful tracker calls only:
+  - input: `48406`
+  - structured output: `58702`
+- including parse-error tracker attempts:
+  - input: `60221`
+  - structured output still usable: `58702`
+
+### What This Means
+
+Key observations from this real match sample:
+
+- `live_state_refresh_response` dominated the cost footprint
+  - `79` total state refresh logs vs `17` discovery logs
+- tracker usage is materially cheaper per call than the general live page for
+  state refresh
+  - tracker refresh input average: `~1312`
+  - live-page refresh input average: `~1439`
+- parse errors matter financially
+  - the England/Ghana tracker burned an estimated `11815` input tokens on
+    failed tracker refresh attempts alone
+- structured output for a single tracked match is not small
+  - successful tracker refreshes averaged `~1570` output tokens
+- the real-match data is directionally close to the earlier generic estimates
+  - generic single-game live refresh estimate:
+    - input: `3139`
+    - output: `1000`
+  - real England/Ghana Gemini sample:
+    - input: `~1361`
+    - output: `~1573`
+
+The difference is expected because the earlier generic estimate assumed a much
+more conservative output shape, while the real Gemini responses for this match
+were verbose in:
+
+- summaries
+- active players
+- recent events
+- reason codes
+- prediction blocks
+
+### Takeaway For Cost Planning
+
+For live tracked matches, the main cost driver is not rediscovery. It is the
+repeated single-match `live/state` refresh loop.
+
+For this actual England/Ghana tracker run:
+
+- every successful tracker refresh cost about:
+  - `~1312` estimated input tokens
+  - `~1570` estimated structured-output tokens
+- failed parse-error refreshes still consumed roughly:
+  - `~1313` estimated input tokens each
+
+So any production cost model for tracked live matches should include:
+
+- cadence
+- average match duration
+- retry / parse-error rate
+- provider-specific verbosity
+
+### Estimated Dollar Cost For This Exact Tracker Run
+
+Using the same pricing assumptions already listed in the OpenAI costing section:
+
+- `gpt-5.4-mini`
+  - input: `$0.75 / 1M tokens`
+  - output: `$4.50 / 1M tokens`
+- `gpt-5.4`
+  - input: `$2.50 / 1M tokens`
+  - output: `$15.00 / 1M tokens`
+- web search:
+  - `$0.01` per call
+
+Important note:
+
+- the saved England/Ghana logs were Gemini-backed
+- the dollar figures below are therefore best read as
+  **OpenAI-equivalent cost if the same request volume and payload sizes were
+  sent through OpenAI pricing assumptions**
+
+#### Successful Tracker Calls Only
+
+From the England/Ghana tracker sample:
+
+- successful tracker discovery calls: `3`
+- successful tracker state refresh calls: `34`
+- total successful tracker calls: `37`
+- total successful tracker input tokens: `48406`
+- total successful tracker structured-output tokens: `58702`
+
+Estimated cost:
+
+| Model | Input cost | Output cost | Web-search cost | Total |
+|---|---:|---:|---:|---:|
+| `gpt-5.4-mini` | `$0.036305` | `$0.264159` | `$0.370000` | `$0.670464` |
+| `gpt-5.4` | `$0.121015` | `$0.880530` | `$0.370000` | `$1.371545` |
+
+#### Including Failed Tracker Parse-Error Attempts
+
+From the same sample:
+
+- failed tracker state refresh parse errors: `9`
+- total tracker calls including failed attempts: `46`
+- total tracker input tokens including failed attempts: `60221`
+- successful structured-output tokens remained: `58702`
+
+Estimated cost:
+
+| Model | Input cost | Output cost | Web-search cost | Total |
+|---|---:|---:|---:|---:|
+| `gpt-5.4-mini` | `$0.045166` | `$0.264159` | `$0.460000` | `$0.769325` |
+| `gpt-5.4` | `$0.150553` | `$0.880530` | `$0.460000` | `$1.491083` |
+
+#### Practical Reading
+
+This specific match sample shows three useful cost realities:
+
+- web-search calls are a very large share of total cost
+  - on `gpt-5.4-mini`, successful tracker calls spent about:
+    - `$0.370000` on search
+    - `$0.300464` on model tokens
+- parse-error retries materially increase total cost even when they produce no
+  usable structured output
+  - in this sample, the failed tracker attempts increased estimated total cost
+    by about:
+    - `+$0.098861` on `gpt-5.4-mini`
+    - `+$0.119538` on `gpt-5.4`
+- the exact tracker cadence and provider reliability matter more than one
+  single response size
+  - repeated refreshes dominate the spend profile for live tracking
+
 ## Detailed Findings
 
 ### 1. Live Discovery
@@ -627,6 +840,138 @@ Approximate upcoming collection:
 input ≈ ~980
 output ≈ ~4010
 ```
+
+## Gemini Costing
+
+This section adds the same style of costing for the Gemini model that this repo
+actually uses under the `Gemini 3` label.
+
+Current repo model:
+
+- `GEMINI_MODEL=gemini-3.5-flash`
+
+### Gemini Pricing Assumptions
+
+Using Google's official Gemini pricing for `gemini-3.5-flash`:
+
+- input: `$1.50 / 1M tokens`
+- output (including thinking tokens): `$9.00 / 1M tokens`
+- Google Search grounding:
+  - `5,000` prompts per month free across Gemini 3 models
+  - then `$14 / 1,000` search queries
+
+Important note:
+
+- one Gemini request can result in one or more Google Search queries
+- Google charges per individual search query performed
+
+### England vs Ghana: Exact Gemini Tracker-Run Cost
+
+This uses the actual saved England vs Ghana tracker-origin Gemini logs already
+summarized earlier in this document.
+
+Successful tracker calls only:
+
+- successful tracker discovery calls: `3`
+- successful tracker state refresh calls: `34`
+- total successful tracker calls: `37`
+- total successful tracker input tokens: `48406`
+- total successful tracker structured-output tokens: `58702`
+
+Estimated Gemini cost:
+
+| Component | Cost |
+|---|---:|
+| Input tokens | `$0.072609` |
+| Output tokens | `$0.528318` |
+| Google Search grounding | `$0.518000` |
+| Total | `$1.118927` |
+
+Including failed tracker parse-error attempts:
+
+- failed tracker state refresh parse errors: `9`
+- total tracker calls including failed attempts: `46`
+- total tracker input tokens including failed attempts: `60221`
+- successful structured-output tokens remained: `58702`
+
+Estimated Gemini cost:
+
+| Component | Cost |
+|---|---:|
+| Input tokens | `$0.090332` |
+| Output tokens | `$0.528318` |
+| Google Search grounding | `$0.644000` |
+| Total | `$1.262650` |
+
+### Practical Gemini Takeaway
+
+For this exact England vs Ghana sample:
+
+- search grounding was a very large share of total spend
+- parse-error retries increased cost noticeably
+- repeated single-match `live/state` refreshes dominated the overall tracker
+  spend profile
+
+Compared with the OpenAI-equivalent numbers earlier in this document:
+
+- `gemini-3.5-flash` is materially more expensive than the
+  `gpt-5.4-mini` baseline used there
+- Gemini search grounding is also more expensive in these current assumptions
+
+So if Gemini remains the tracking provider, cost control depends heavily on:
+
+- reducing parse errors
+- avoiding unnecessary retries
+- using a sensible refresh cadence
+- keeping grounded-search request count under control
+
+## Short Summary: England vs Ghana
+
+The saved `England vs Ghana` tracker sample gives a useful real-world estimate
+for one live match, but it was **not completely covered from kickoff to final
+whistle by the tracker**.
+
+Coverage detail:
+
+- kickoff: `2026-06-23T20:00:00Z` (`1:00 PM PDT`)
+- last real captured tracker point: `2026-06-23T20:54:16Z`
+- captured match state at that point: `Halftime`, `0-0`
+
+So the tracker recorded roughly the **first 54 minutes of real elapsed time**
+around the match, which corresponds to coverage through the end of the first
+half and halftime only. It did **not** continuously capture the second half.
+
+In practical terms:
+
+- captured portion: about **54 of ~120 real-world match minutes** if you
+  include halftime and stoppage as part of a normal broadcast/event window
+- or about **54 of ~90 regulation minutes** if you compare only against the
+  nominal regulation clock
+
+The laptop/session interruption meant the stored history stopped at halftime,
+and the final `0-0` result was appended later as a terminal snapshot rather
+than captured through continuous second-half polling.
+
+Even with that limitation, the saved Gemini tracker logs show:
+
+- successful tracker calls: `37`
+- failed tracker parse-error attempts: `9`
+- successful tracker input tokens: `48406`
+- successful tracker structured-output tokens: `58702`
+- total tracker input tokens including failed attempts: `60221`
+
+Estimated cost for this partial tracker run:
+
+- `gemini-3.5-flash`
+  - successful calls only: `$1.118927`
+  - including failed attempts: `$1.262650`
+- OpenAI-equivalent comparison
+  - `gpt-5.4-mini`: `$0.670464` successful-only, `$0.769325` including failed attempts
+  - `gpt-5.4`: `$1.371545` successful-only, `$1.491083` including failed attempts
+
+So the England/Ghana numbers are best treated as a **partial real-match cost
+sample covering only the first half / halftime window**, not as the cost of a
+fully captured end-to-end live match.
 
 ## Practical Recommendations
 

@@ -8,6 +8,18 @@ import { useLiveEvents } from "./hooks/useLiveEvents";
 
 type AppPage = "live" | "upcoming" | "tracker" | "history";
 
+const TERMINAL_HISTORY_STATUSES = new Set([
+  "completed",
+  "cancelled",
+  "postponed"
+]);
+
+const formatHistoryStatus = (status: string): string =>
+  status
+    .split(/[_-]+/)
+    .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
+    .join(" ");
+
 const getPageFromHash = (): AppPage =>
   window.location.hash === "#/upcoming"
     ? "upcoming"
@@ -589,6 +601,40 @@ export const App = () => {
               <h2>Past tracked events.</h2>
             </div>
           </div>
+          {trackerArchives.length > 0 ? (
+            <section className="history-grid" aria-label="Tracked match history">
+              {trackerArchives.map((archive) => {
+                const incomplete =
+                  !TERMINAL_HISTORY_STATUSES.has(archive.final_status);
+
+                return (
+                  <button
+                    key={archive.archive_id}
+                    type="button"
+                    className={`history-card ${
+                      archive.archive_id === selectedTrackerArchiveId
+                        ? "history-card--selected"
+                        : ""
+                    }`}
+                    onClick={() => selectTrackerArchive(archive.archive_id)}
+                  >
+                    <div className="history-card__eyebrow">
+                      <span>{archive.tournament_name}</span>
+                      <span>{new Date(archive.archived_at).toLocaleDateString()}</span>
+                    </div>
+                    <h3>{archive.match_name}</h3>
+                    <div className="history-card__meta">
+                      <span>{archive.final_score_display}</span>
+                      <span>{formatHistoryStatus(archive.final_status)}</span>
+                      <span>{archive.history_points} points</span>
+                      {incomplete ? <span>Partial capture</span> : null}
+                    </div>
+                    <p>{archive.venue_summary}</p>
+                  </button>
+                );
+              })}
+            </section>
+          ) : null}
           {archiveLoading && !selectedTrackerArchive ? (
             <div className="loading-state">Loading archived tracked events...</div>
           ) : selectedTrackerArchive ? (
@@ -598,12 +644,11 @@ export const App = () => {
             />
           ) : trackerArchives.length > 0 ? (
             <div className="empty-state">
-              Choose one of the archived tracked events from the history
-              controls to review its time series.
+              Select one of the tracked events above to review its time series.
             </div>
           ) : (
             <div className="empty-state">
-              No completed tracked events have been archived yet.
+              No tracked events are available in history yet.
             </div>
           )}
         </section>

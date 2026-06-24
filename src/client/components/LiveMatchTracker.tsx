@@ -284,10 +284,15 @@ export const LiveMatchTracker = ({
   ];
 
   const probabilitySeries = event.live_state.live_predictions.win_probabilities.map(
-    (prediction) => ({
+    (prediction, index) => ({
       title: `${getParticipantName(event, prediction.participant_id)} Win %`,
       latestValue: formatProbability(prediction.probability),
       points: buildSeries(history, (state) => {
+        const byIndex = state.live_predictions.win_probabilities[index];
+        if (byIndex) {
+          return byIndex.probability * 100;
+        }
+
         const next = state.live_predictions.win_probabilities.find(
           (item) => item.participant_id === prediction.participant_id
         );
