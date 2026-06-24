@@ -3431,6 +3431,11 @@ export const listMockUpcomingEvents = (
       ).getTime();
       return scheduledTime >= now && scheduledTime <= maxTime;
     })
+    .sort(
+      (left, right) =>
+        new Date(left.context.match.scheduled_start_time).getTime() -
+        new Date(right.context.match.scheduled_start_time).getTime()
+    )
     .map((seed) => ({
       match_id: seed.match_id,
       context: seed.context,

@@ -697,6 +697,13 @@ const buildPayloadWarnings = (payload: Record<string, unknown>): string[] =>
     ? payload.warnings.map((warning) => String(warning))
     : [];
 
+const compareScheduledStartAscending = (
+  left: { context: { match: { scheduled_start_time: string } } },
+  right: { context: { match: { scheduled_start_time: string } } }
+): number =>
+  new Date(left.context.match.scheduled_start_time).getTime() -
+  new Date(right.context.match.scheduled_start_time).getTime();
+
 const buildWarningsWithOptionalMissingSearch = (
   payload: Record<string, unknown>,
   providerDebug: ProviderDebugInfo,
@@ -1113,7 +1120,7 @@ export class StructuredSearchUpcomingEventProvider implements UpcomingEventProvi
     }
 
     return {
-      events: acceptedEvents,
+      events: acceptedEvents.sort(compareScheduledStartAscending),
       warnings: buildWarningsWithOptionalMissingSearch(
         payload,
         providerDebug,

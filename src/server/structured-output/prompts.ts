@@ -178,6 +178,7 @@ export const buildUpcomingPrompt = (input: UpcomingQuery) => ({
     "Use web search to verify upcoming matches in the requested window from recent and authoritative sources before returning any event.",
     buildSupportedSportsRule(input.sport),
     "Return only upcoming matches within the requested region, sport, and time window.",
+    "Include matches later today that have not started yet; those same-day upcoming matches belong in this endpoint and should not be omitted just because kickoff is soon.",
     "For each upcoming event, return context and pre-match intelligence with realistic watch reasons and win probabilities.",
     crossPhaseScoresRule,
     upcomingAudienceRule,

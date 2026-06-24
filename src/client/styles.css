@@ -376,6 +376,7 @@ select {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .event-card__probability strong,
@@ -385,6 +386,7 @@ select {
   color: #ffcf8a;
   font-size: 1.55rem;
   line-height: 1;
+  text-align: center;
 }
 
 .event-card__metric strong {

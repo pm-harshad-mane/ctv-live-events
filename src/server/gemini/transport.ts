@@ -103,6 +103,127 @@ const extractJsonFragment = (value: string): string | null => {
   return trimmed.slice(start, end + 1);
 };
 
+const extractCompleteTopLevelObjects = (
+  value: string,
+  arrayKey: "events" | "states"
+): string[] => {
+  const marker = `{"${arrayKey}":[`;
+  const trimmed = unwrapJsonText(value).trim();
+  const start = trimmed.indexOf(marker);
+  if (start === -1) {
+    return [];
+  }
+
+  const arrayStart = start + marker.length;
+  const objects: string[] = [];
+  let depth = 0;
+  let objectStart = -1;
+  let inString = false;
+  let escape = false;
+
+  for (let index = arrayStart; index < trimmed.length; index += 1) {
+    const character = trimmed[index];
+
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (character === "\\") {
+        escape = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (character === "{") {
+      if (depth === 0) {
+        objectStart = index;
+      }
+      depth += 1;
+      continue;
+    }
+
+    if (character === "}") {
+      if (depth === 0) {
+        continue;
+      }
+      depth -= 1;
+      if (depth === 0 && objectStart >= 0) {
+        objects.push(trimmed.slice(objectStart, index + 1));
+        objectStart = -1;
+      }
+      continue;
+    }
+  }
+
+  return objects;
+};
+
+const buildSchemaRepairCandidates = (
+  text: string,
+  schemaName: string
+): string[] => {
+  const trimmed = unwrapJsonText(text).trimEnd();
+  const candidates = new Set<string>();
+
+  if (
+    schemaName === "live_discovery_response" ||
+    schemaName === "upcoming_events_response"
+  ) {
+    if (
+      trimmed.startsWith('{"events":[') &&
+      !trimmed.includes('],"warnings"')
+    ) {
+      if (trimmed.endsWith("}]")) {
+        candidates.add(`${trimmed},"warnings":[]}`);
+      } else {
+        candidates.add(`${trimmed}],"warnings":[]}`);
+      }
+    }
+
+    const completeEvents = extractCompleteTopLevelObjects(text, "events");
+    if (completeEvents.length > 0) {
+      candidates.add(`{"events":[${completeEvents.join(",")}],"warnings":[]}`);
+    }
+  }
+
+  if (schemaName === "live_state_refresh_response") {
+    if (
+      trimmed.startsWith('{"states":[') &&
+      !trimmed.includes('],"failed_matches"') &&
+      !trimmed.includes('],"warnings"')
+    ) {
+      if (trimmed.endsWith("}]")) {
+        candidates.add(`${trimmed},"failed_matches":[],"warnings":[]}`);
+      } else {
+        candidates.add(`${trimmed}],"failed_matches":[],"warnings":[]}`);
+      }
+    } else if (
+      trimmed.startsWith('{"states":[') &&
+      trimmed.includes('],"failed_matches"') &&
+      !trimmed.includes('],"warnings"')
+    ) {
+      candidates.add(`${trimmed},"warnings":[]}`);
+    }
+
+    const completeStates = extractCompleteTopLevelObjects(text, "states");
+    if (completeStates.length > 0) {
+      candidates.add(
+        `{"states":[${completeStates.join(
+          ","
+        )}],"failed_matches":[],"warnings":[]}`
+      );
+    }
+  }
+
+  return Array.from(candidates);
+};
+
 const extractGroundingMetadata = (
   payload: unknown
 ): GeminiGroundingMetadata => {
@@ -260,7 +381,10 @@ const parseGeminiApiPayload = (raw: string): unknown => {
   }
 };
 
-const parseStructuredJsonText = (text: string): unknown => {
+const parseStructuredJsonText = (
+  text: string,
+  schemaName: string
+): unknown => {
   const directCandidate = unwrapJsonText(text);
 
   try {
@@ -272,6 +396,14 @@ const parseStructuredJsonText = (text: string): unknown => {
         return JSON.parse(fragment) as unknown;
       } catch {
         // fall through to clearer error below
+      }
+    }
+
+    for (const repaired of buildSchemaRepairCandidates(text, schemaName)) {
+      try {
+        return JSON.parse(repaired) as unknown;
+      } catch {
+        // keep trying other repair candidates
       }
     }
 
@@ -386,7 +518,7 @@ export class GeminiStructuredTransport implements StructuredResponseTransport {
         );
       }
 
-      const structured = parseStructuredJsonText(text);
+      const structured = parseStructuredJsonText(text, request.schema.name);
       const metadata = extractGroundingMetadata(parsed);
 
       await writeAiResponseLog(this.env, {
