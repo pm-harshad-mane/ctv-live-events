@@ -1,5 +1,8 @@
 # CTV Live Events
 
+<img width="376" height="648" alt="image" src="https://github.com/user-attachments/assets/4ad50495-15a4-4df9-a793-682e5bd70ad2" />
+
+
 Local MVP for a live sports intelligence app.
 
 The project has:
