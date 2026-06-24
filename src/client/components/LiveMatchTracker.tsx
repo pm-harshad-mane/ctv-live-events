@@ -63,6 +63,18 @@ const formatSportSpecificValue = (value: unknown): string => {
   return String(value);
 };
 
+const formatSourceHost = (url: string | null | undefined): string | null => {
+  if (!url) {
+    return null;
+  }
+
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+};
+
 const TRACKER_SCORE_HELP: Record<string, string> = {
   "Watchability":
     "An overall live score for how worth-watching the match is right now.",
@@ -106,6 +118,13 @@ export const LiveMatchTracker = ({
   event,
   history
 }: LiveMatchTrackerProps) => {
+  const sourceReferences =
+    (event.live_state.sources?.length ?? 0) > 0
+      ? event.live_state.sources
+      : [...history]
+          .reverse()
+          .find((point) => (point.liveState.sources?.length ?? 0) > 0)
+          ?.liveState.sources ?? [];
   const lastUpdatedAt = history.at(-1)?.capturedAt ?? null;
   const compactScoreDisplay =
     event.live_state.score.participant_scores.length > 0
@@ -437,6 +456,44 @@ export const LiveMatchTracker = ({
               <li key={point}>{point}</li>
             ))}
           </ul>
+        </section>
+
+        <section className="detail-card tracker-sources-card">
+          <h3>Sources</h3>
+          {sourceReferences.length > 0 ? (
+            <ul className="tracker-sources-list">
+              {sourceReferences.map((source) => {
+                const key = `${source.title}-${source.url ?? source.domain ?? source.provider ?? "source"}`;
+                const host = formatSourceHost(source.url) ?? source.domain;
+
+                return (
+                  <li key={key} className="tracker-sources-list__item">
+                    {source.url ? (
+                      <a
+                        className="tracker-sources-list__link"
+                        href={source.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {source.title}
+                      </a>
+                    ) : (
+                      <span className="tracker-sources-list__title">
+                        {source.title}
+                      </span>
+                    )}
+                    <span className="tracker-sources-list__meta">
+                      {[source.provider, host].filter(Boolean).join(" · ")}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="detail-modal__copy">
+              No provider source references were attached to this snapshot.
+            </p>
+          )}
         </section>
       </div>
     </section>

@@ -5,6 +5,7 @@ import type {
   LiveState,
   MatchContext,
   MatchIdentity,
+  SourceReference,
   UpcomingQueryInput,
   UpcomingEvent
 } from "../../../shared/schemas/live";
@@ -286,9 +287,44 @@ const normalizeProbabilityEntryArray = (
   });
 };
 
+const normalizeSourceReference = (value: unknown): SourceReference | null => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const title = typeof candidate.title === "string" ? candidate.title.trim() : "";
+  if (!title) {
+    return null;
+  }
+
+  return {
+    title,
+    url: typeof candidate.url === "string" ? candidate.url : null,
+    domain: typeof candidate.domain === "string" ? candidate.domain : null,
+    provider: typeof candidate.provider === "string" ? candidate.provider : null
+  };
+};
+
+const dedupeSourceReferences = (
+  sources: SourceReference[]
+): SourceReference[] => {
+  const deduped = new Map<string, SourceReference>();
+
+  for (const source of sources) {
+    const key = `${source.title}::${source.url ?? ""}`;
+    if (!deduped.has(key)) {
+      deduped.set(key, source);
+    }
+  }
+
+  return Array.from(deduped.values());
+};
+
 const normalizeLiveStateCandidate = (
   value: unknown,
-  responseObjectLabel: string
+  responseObjectLabel: string,
+  sources: SourceReference[] = []
 ): unknown => {
   const candidate = assertObject(value, responseObjectLabel);
   const livePredictions = assertObject(
@@ -395,6 +431,7 @@ const normalizeLiveStateCandidate = (
       ...verification,
       confidence: normalizeUnitInterval(verification.confidence)
     },
+    sources,
     live_predictions: {
       ...livePredictions,
       win_probabilities: normalizeProbabilityEntryArray(
@@ -556,7 +593,8 @@ const repairLiveEventContextParticipants = (
 
 const normalizeLiveEventCandidate = (
   value: unknown,
-  responseObjectLabel: string
+  responseObjectLabel: string,
+  sources: SourceReference[] = []
 ): unknown => {
   const candidate = repairLiveEventContextParticipants(
     assertObject(value, responseObjectLabel)
@@ -566,7 +604,8 @@ const normalizeLiveEventCandidate = (
     ...candidate,
     live_state: normalizeLiveStateCandidate(
       candidate.live_state,
-      responseObjectLabel
+      responseObjectLabel,
+      sources
     )
   };
 };
@@ -627,6 +666,7 @@ export type StructuredSearchProviderFlavor = {
     region: string
   ): Pick<StructuredResponseRequest, "tools" | "toolChoice" | "include">;
   getProviderDebug(payload: Record<string, unknown>): ProviderDebugInfo;
+  getSources(payload: Record<string, unknown>): SourceReference[];
   wasSearchInvoked(providerDebug: ProviderDebugInfo): boolean;
   missingSearchWarning: string;
   missingSearchFailureCode: string;
@@ -732,11 +772,18 @@ export class StructuredSearchLiveEventDiscoveryProvider implements LiveEventDisc
       providerDebug,
       this.flavor
     );
+    const normalizedSources = dedupeSourceReferences(
+      this.flavor.getSources(payload)
+    );
 
     let rawEvents = Array.isArray(payload.events)
       ? payload.events.map((event) =>
           liveEventSchema.parse(
-            normalizeLiveEventCandidate(event, this.flavor.responseObjectLabel)
+            normalizeLiveEventCandidate(
+              event,
+              this.flavor.responseObjectLabel,
+              normalizedSources
+            )
           )
         )
       : [];
@@ -758,7 +805,8 @@ export class StructuredSearchLiveEventDiscoveryProvider implements LiveEventDisc
               liveEventSchema.parse(
                 normalizeLiveEventCandidate(
                   event,
-                  this.flavor.responseObjectLabel
+                  this.flavor.responseObjectLabel,
+                  dedupeSourceReferences(this.flavor.getSources(retryPayload))
                 )
               )
             )
@@ -863,11 +911,18 @@ export class StructuredSearchLiveEventStateProvider implements LiveEventStatePro
       providerDebug,
       this.flavor
     );
+    const normalizedSources = dedupeSourceReferences(
+      this.flavor.getSources(payload)
+    );
 
     const states = Array.isArray(payload.states)
       ? payload.states.map((state) =>
           liveStateSchema.parse(
-            normalizeLiveStateCandidate(state, this.flavor.responseObjectLabel)
+            normalizeLiveStateCandidate(
+              state,
+              this.flavor.responseObjectLabel,
+              normalizedSources
+            )
           )
         )
       : [];
@@ -953,7 +1008,8 @@ export class StructuredSearchLiveEventLookupProvider implements LiveEventLookupP
       ? liveStateSchema.parse(
           normalizeLiveStateCandidate(
             payload.live_state,
-            this.flavor.responseObjectLabel
+            this.flavor.responseObjectLabel,
+            dedupeSourceReferences(this.flavor.getSources(payload))
           )
         )
       : null;
@@ -982,7 +1038,8 @@ export class StructuredSearchLiveEventLookupProvider implements LiveEventLookupP
     const event = liveEventSchema.parse(
       normalizeLiveEventCandidate(
         payload.event,
-        this.flavor.responseObjectLabel
+        this.flavor.responseObjectLabel,
+        dedupeSourceReferences(this.flavor.getSources(payload))
       )
     );
     return assessLiveEventQuality(event).accepted ? event : null;

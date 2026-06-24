@@ -1,4 +1,5 @@
 import type { ProviderDebugInfo } from "../../../shared/types/api";
+import type { SourceReference } from "../../../shared/schemas/live";
 import type {
   StructuredResponseRequest,
   StructuredResponseTransport
@@ -52,10 +53,77 @@ const openAiFlavor: StructuredSearchProviderFlavor = {
             ? webSearch.source_count
             : 0,
         sources: Array.isArray(webSearch?.sources)
-          ? webSearch.sources.map((source) => String(source))
+          ? webSearch.sources.map((source) =>
+              typeof source === "string"
+                ? source
+                : source && typeof source === "object" && "title" in source
+                  ? String(source.title)
+                  : String(source)
+            )
           : []
       }
     };
+  },
+  getSources: (payload: Record<string, unknown>): SourceReference[] => {
+    const metadata =
+      "_openai_metadata" in payload &&
+      payload._openai_metadata &&
+      typeof payload._openai_metadata === "object"
+        ? (payload._openai_metadata as Record<string, unknown>)
+        : null;
+    const webSearch =
+      metadata &&
+      "web_search" in metadata &&
+      metadata.web_search &&
+      typeof metadata.web_search === "object"
+        ? (metadata.web_search as Record<string, unknown>)
+        : null;
+
+    return Array.isArray(webSearch?.sources)
+      ? webSearch.sources.flatMap((source): SourceReference[] => {
+          if (typeof source === "string") {
+            return [
+              {
+                title: source,
+                url: null,
+                domain: null,
+                provider: "OpenAI Web Search"
+              }
+            ];
+          }
+
+          if (!source || typeof source !== "object") {
+            return [];
+          }
+
+          const candidate = source as Record<string, unknown>;
+          const title =
+            typeof candidate.title === "string"
+              ? candidate.title
+              : typeof candidate.url === "string"
+                ? candidate.url
+                : typeof candidate.domain === "string"
+                  ? candidate.domain
+                  : null;
+
+          if (!title) {
+            return [];
+          }
+
+          return [
+            {
+              title,
+              url: typeof candidate.url === "string" ? candidate.url : null,
+              domain:
+                typeof candidate.domain === "string" ? candidate.domain : null,
+              provider:
+                typeof candidate.provider === "string"
+                  ? candidate.provider
+                  : "OpenAI Web Search"
+            }
+          ];
+        })
+      : [];
   },
   wasSearchInvoked: (providerDebug: ProviderDebugInfo): boolean =>
     Boolean(providerDebug.openai_web_search?.tool_invoked),

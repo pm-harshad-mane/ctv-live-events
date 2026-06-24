@@ -42,7 +42,12 @@ type OpenAiWebSearchMetadata = {
   tool_invoked: boolean;
   call_count: number;
   source_count: number;
-  sources: string[];
+  sources: Array<{
+    title: string;
+    url?: string;
+    domain?: string;
+    provider?: string;
+  }>;
 };
 
 type OpenAiStructuredResponseMetadata = {
@@ -204,6 +209,10 @@ const extractWebSearchMetadata = (
   const output =
     "output" in payload && Array.isArray(payload.output) ? payload.output : [];
   const sourceLabels = new Set<string>();
+  const normalizedSources = new Map<
+    string,
+    { title: string; url?: string; domain?: string; provider?: string }
+  >();
   let callCount = 0;
 
   for (const item of output) {
@@ -228,6 +237,7 @@ const extractWebSearchMetadata = (
     for (const source of sources) {
       if (typeof source === "string") {
         sourceLabels.add(source);
+        normalizedSources.set(source, { title: source });
         continue;
       }
 
@@ -235,24 +245,33 @@ const extractWebSearchMetadata = (
         continue;
       }
 
-      const labelCandidates = [
-        "title" in source && typeof source.title === "string"
-          ? source.title
-          : null,
-        "url" in source && typeof source.url === "string" ? source.url : null,
-        "domain" in source && typeof source.domain === "string"
-          ? source.domain
-          : null,
-        "source" in source && typeof source.source === "string"
-          ? source.source
-          : null,
-        "provider" in source && typeof source.provider === "string"
-          ? source.provider
-          : null
-      ].filter((value): value is string => Boolean(value));
+      const normalizedSource = {
+        title:
+          ("title" in source && typeof source.title === "string"
+            ? source.title
+            : "source" in source && typeof source.source === "string"
+              ? source.source
+              : "url" in source && typeof source.url === "string"
+                ? source.url
+                : "domain" in source && typeof source.domain === "string"
+                  ? source.domain
+                  : "provider" in source && typeof source.provider === "string"
+                    ? source.provider
+                    : null) ?? "Unknown source",
+        url: "url" in source && typeof source.url === "string" ? source.url : undefined,
+        domain:
+          "domain" in source && typeof source.domain === "string"
+            ? source.domain
+            : undefined,
+        provider:
+          "provider" in source && typeof source.provider === "string"
+            ? source.provider
+            : undefined
+      };
 
-      if (labelCandidates[0]) {
-        sourceLabels.add(labelCandidates[0]);
+      if (normalizedSource.title) {
+        sourceLabels.add(normalizedSource.title);
+        normalizedSources.set(normalizedSource.title, normalizedSource);
       }
     }
   }
@@ -262,7 +281,7 @@ const extractWebSearchMetadata = (
       tool_invoked: callCount > 0,
       call_count: callCount,
       source_count: sourceLabels.size,
-      sources: Array.from(sourceLabels)
+      sources: Array.from(normalizedSources.values())
     }
   };
 };

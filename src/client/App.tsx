@@ -78,7 +78,6 @@ export const App = () => {
     setUpcomingDays,
     setPeriodicUpdatesEnabled,
     setTrackerPollingIntervalSeconds,
-    setTrackerUpdatesEnabled,
     selectLiveMatch,
     selectUpcomingMatch,
     selectTrackedLiveMatch,
@@ -334,24 +333,6 @@ export const App = () => {
               >
                 {hasLoadedLiveOnce ? "Reload live matches" : "Load live matches"}
               </button>
-              <button
-                type="button"
-                onClick={() => void refreshTrackedMatchNow()}
-                disabled={serviceDisabled || !trackedLiveMatchId || trackerLoading}
-              >
-                Refresh tracked match
-              </button>
-              <label className="toolbar__toggle">
-                <input
-                  type="checkbox"
-                  checked={trackerUpdatesEnabled}
-                  onChange={(event) =>
-                    setTrackerUpdatesEnabled(event.target.checked)
-                  }
-                  disabled={serviceDisabled || !trackedLiveMatchId}
-                />
-                <span>Periodic tracker updates</span>
-              </label>
             </div>
           </>
         ) : (
@@ -443,11 +424,9 @@ export const App = () => {
             </p>
           ) : null}
           {trackedLiveMatchId && trackerLoading ? (
-            <p>Tracker refresh is in progress.</p>
+            <p>{trackerStatusMessage}</p>
           ) : trackedLiveMatchId && trackerUpdatesEnabled ? (
             <p>Next tracker refresh in {trackerCountdown}s</p>
-          ) : trackedLiveMatchId ? (
-            <p>Periodic tracker updates are paused.</p>
           ) : null}
           {trackerError ? (
             <p className="status-panel__error">{trackerError}</p>

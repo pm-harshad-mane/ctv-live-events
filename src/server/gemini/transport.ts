@@ -46,7 +46,12 @@ type GeminiGroundingMetadata = {
     tool_invoked: boolean;
     query_count: number;
     source_count: number;
-    sources: string[];
+    sources: Array<{
+      title: string;
+      url?: string;
+      domain?: string;
+      provider?: string;
+    }>;
     finish_reason?: string;
     response_preview?: string;
   };
@@ -133,6 +138,10 @@ const extractGroundingMetadata = (
       : null;
 
   const sourceLabels = new Set<string>();
+  const normalizedSources = new Map<
+    string,
+    { title: string; url?: string; domain?: string; provider?: string }
+  >();
   const groundingChunks =
     groundingMetadata &&
     "groundingChunks" in groundingMetadata &&
@@ -167,14 +176,23 @@ const extractGroundingMetadata = (
       continue;
     }
 
-    const labelCandidates = [
-      typeof web.title === "string" ? web.title : null,
-      typeof web.uri === "string" ? web.uri : null,
-      typeof web.domain === "string" ? web.domain : null
-    ].filter((value): value is string => Boolean(value));
+    const normalizedSource = {
+      title:
+        (typeof web.title === "string"
+          ? web.title
+          : typeof web.uri === "string"
+            ? web.uri
+            : typeof web.domain === "string"
+              ? web.domain
+              : null) ?? "Unknown source",
+      url: typeof web.uri === "string" ? web.uri : undefined,
+      domain: typeof web.domain === "string" ? web.domain : undefined,
+      provider: "Google Search"
+    };
 
-    if (labelCandidates[0]) {
-      sourceLabels.add(labelCandidates[0]);
+    if (normalizedSource.title) {
+      sourceLabels.add(normalizedSource.title);
+      normalizedSources.set(normalizedSource.title, normalizedSource);
     }
   }
 
@@ -183,7 +201,7 @@ const extractGroundingMetadata = (
       tool_invoked: groundingMetadata !== null,
       query_count: webSearchQueries.length,
       source_count: sourceLabels.size,
-      sources: Array.from(sourceLabels),
+      sources: Array.from(normalizedSources.values()),
       finish_reason: finishReason,
       response_preview: responsePreview
     }

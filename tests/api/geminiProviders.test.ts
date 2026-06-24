@@ -58,7 +58,7 @@ describe("Gemini providers", () => {
       known_matches: []
     });
 
-    expect(transport.createStructuredResponse).toHaveBeenCalledTimes(1);
+    expect(transport.createStructuredResponse).toHaveBeenCalledTimes(2);
     const request = transport.createStructuredResponse.mock.calls[0][0];
     expect(request.schema.name).toBe("live_discovery_response");
     expect(request.instructions).toContain("Use web search");

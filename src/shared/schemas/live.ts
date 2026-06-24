@@ -8,6 +8,13 @@ export const participantSchema = z.object({
   short_name: z.string().nullable().optional()
 });
 
+export const sourceReferenceSchema = z.object({
+  title: z.string().min(1),
+  url: z.string().url().nullable().optional(),
+  domain: z.string().nullable().optional(),
+  provider: z.string().nullable().optional()
+});
+
 export const matchIdentitySchema = z.object({
   match_id: z.string().min(1),
   sport: z.string().min(1),
@@ -253,6 +260,7 @@ export const liveStateSchema = z.object({
     source_observation_time: isoDatetimeSchema.nullable(),
     age_seconds: z.number().nonnegative()
   }),
+  sources: z.array(sourceReferenceSchema).default([]),
   verification: z.object({
     status: z.enum([
       "verified",
@@ -419,6 +427,7 @@ export const trackerArchiveCreateSchema = z.object({
 });
 
 export type Participant = z.infer<typeof participantSchema>;
+export type SourceReference = z.infer<typeof sourceReferenceSchema>;
 export type MatchIdentity = z.infer<typeof matchIdentitySchema>;
 export type MatchContext = z.infer<typeof matchContextSchema>;
 export type LiveState = z.infer<typeof liveStateSchema>;

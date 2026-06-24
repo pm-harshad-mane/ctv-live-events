@@ -121,7 +121,9 @@ const mergeDiscovery = (
     const acceptedState =
       existing && !shouldAcceptLiveStateUpdate(existing.live_state, incoming.live_state)
         ? existing.live_state
-        : incoming.live_state;
+        : existing
+          ? preserveLiveStateSources(existing.live_state, incoming.live_state)
+          : incoming.live_state;
     const acceptedContext =
       incoming.context_status === "unchanged" && existing?.context
         ? existing.context
@@ -168,7 +170,7 @@ const mergeStates = (
       event.live_state,
       nextState
     )
-      ? nextState
+      ? preserveLiveStateSources(event.live_state, nextState)
       : event.live_state;
     return {
       ...event,
@@ -281,6 +283,17 @@ const shouldAcceptLiveStateUpdate = (
 
   return true;
 };
+
+const preserveLiveStateSources = (
+  currentState: LiveState,
+  nextState: LiveState
+): LiveState =>
+  (nextState.sources?.length ?? 0) > 0 || (currentState.sources?.length ?? 0) === 0
+    ? nextState
+    : {
+        ...nextState,
+        sources: currentState.sources ?? []
+      };
 
 const isClearlyWeakLiveSnapshot = (state: LiveState): boolean => {
   const watchability = getSafeWatchability(state);
@@ -675,6 +688,10 @@ export const useLiveEvents = () => {
       return;
     }
 
+    if (!trackerUpdatesEnabled) {
+      setTrackerUpdatesEnabled(true);
+    }
+
     setTrackerError(null);
     const trackedMatchName = trackedLiveSnapshot.context.match.match_name;
     setTrackerHistory((current) =>
@@ -686,9 +703,7 @@ export const useLiveEvents = () => {
         current === "Preparing tracked match view..." ||
         current === "Tracked match is unavailable."
       ) {
-        return trackerUpdatesEnabled
-          ? `Tracking ${trackedMatchName}.`
-          : `Tracking ${trackedMatchName}. Auto refresh is paused.`;
+        return `Tracking ${trackedMatchName}.`;
       }
 
       return current;

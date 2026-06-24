@@ -541,6 +541,7 @@ const buildBasketballState = (
       source_observation_time: null,
       age_seconds: 0
     },
+    sources: [],
     verification: {
       status: "verified",
       confidence: 0.82,
@@ -713,6 +714,7 @@ const buildSoccerState = (
       source_observation_time: null,
       age_seconds: 0
     },
+    sources: [],
     verification: {
       status: "verified",
       confidence: 0.79,
@@ -882,6 +884,7 @@ const buildFootballState = (
       source_observation_time: null,
       age_seconds: 0
     },
+    sources: [],
     verification: {
       status: "verified",
       confidence: 0.8,
@@ -1047,6 +1050,7 @@ const buildBaseballState = (
       source_observation_time: null,
       age_seconds: 0
     },
+    sources: [],
     verification: {
       status: "verified",
       confidence: 0.77,
@@ -1213,6 +1217,7 @@ const buildCricketState = (
       source_observation_time: null,
       age_seconds: 0
     },
+    sources: [],
     verification: {
       status: "verified",
       confidence: 0.76,
@@ -1377,6 +1382,7 @@ const buildHockeyState = (
       source_observation_time: null,
       age_seconds: 0
     },
+    sources: [],
     verification: {
       status: "verified",
       confidence: 0.78,
@@ -1530,6 +1536,7 @@ const buildTennisState = (
       source_observation_time: null,
       age_seconds: 0
     },
+    sources: [],
     verification: {
       status: "verified",
       confidence: 0.74,
@@ -1702,6 +1709,7 @@ const buildMmaState = (
       source_observation_time: null,
       age_seconds: 0
     },
+    sources: [],
     verification: {
       status: "verified",
       confidence: 0.73,

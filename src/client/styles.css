@@ -883,6 +883,44 @@ select {
   gap: 18px;
 }
 
+.tracker-sources-card {
+  grid-column: 1 / -1;
+}
+
+.tracker-sources-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.tracker-sources-list__item {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(7, 11, 21, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tracker-sources-list__link,
+.tracker-sources-list__title {
+  color: #e9eef8;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.tracker-sources-list__link:hover {
+  color: #ffcf8a;
+  text-decoration: underline;
+}
+
+.tracker-sources-list__meta {
+  color: #aeb9cd;
+  font-size: 0.86rem;
+}
+
 @media (max-width: 720px) {
   .page-shell {
     padding: 24px 16px 40px;
