@@ -1,4 +1,8 @@
-import type { LiveEvent, LiveState } from "../../shared/schemas/live";
+import type {
+  LiveEvent,
+  LiveState,
+  SourceReference
+} from "../../shared/schemas/live";
 import { useActiveCountdown } from "../hooks/useActiveCountdown";
 import { formatVenueLocation } from "../lib/matchPresentation";
 import { ScoreTrendChart } from "./ScoreTrendChart";
@@ -11,6 +15,7 @@ type TrackerHistoryPoint = {
 type LiveMatchTrackerProps = {
   event: LiveEvent;
   history: TrackerHistoryPoint[];
+  sourceReferences?: SourceReference[];
 };
 
 const formatProbability = (value: number): string =>
@@ -75,6 +80,37 @@ const formatSourceHost = (url: string | null | undefined): string | null => {
   }
 };
 
+const getSourceReferenceKey = (source: SourceReference): string =>
+  [
+    source.title.trim().toLowerCase(),
+    source.url?.trim().toLowerCase() ?? "",
+    source.domain?.trim().toLowerCase() ?? "",
+    source.provider?.trim().toLowerCase() ?? ""
+  ].join("::");
+
+const mergeSourceReferences = (
+  history: TrackerHistoryPoint[],
+  currentSources: SourceReference[] | undefined
+): SourceReference[] => {
+  const merged: SourceReference[] = [];
+  const seen = new Set<string>();
+
+  for (const source of [
+    ...history.flatMap((point) => point.liveState.sources ?? []),
+    ...(currentSources ?? [])
+  ]) {
+    const key = getSourceReferenceKey(source);
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    merged.push(source);
+  }
+
+  return merged;
+};
+
 const TRACKER_SCORE_HELP: Record<string, string> = {
   "Watchability":
     "An overall live score for how worth-watching the match is right now.",
@@ -116,15 +152,12 @@ const TRACKER_SCORE_HELP: Record<string, string> = {
 
 export const LiveMatchTracker = ({
   event,
-  history
+  history,
+  sourceReferences: sourceReferencesOverride
 }: LiveMatchTrackerProps) => {
   const sourceReferences =
-    (event.live_state.sources?.length ?? 0) > 0
-      ? event.live_state.sources
-      : [...history]
-          .reverse()
-          .find((point) => (point.liveState.sources?.length ?? 0) > 0)
-          ?.liveState.sources ?? [];
+    sourceReferencesOverride ??
+    mergeSourceReferences(history, event.live_state.sources);
   const lastUpdatedAt = history.at(-1)?.capturedAt ?? null;
   const compactScoreDisplay =
     event.live_state.score.participant_scores.length > 0

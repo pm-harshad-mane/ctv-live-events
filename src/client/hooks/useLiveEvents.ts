@@ -6,6 +6,7 @@ import type {
   MatchIdentity,
   ProviderMode,
   PublicConfig,
+  SourceReference,
   TrackerArchive,
   TrackerArchiveSummary,
   TrackerHistoryPoint,
@@ -72,6 +73,34 @@ const buildIdentity = (event: LiveEvent): MatchIdentity => ({
 const hasTwoParticipants = (
   participants: Array<{ participant_id: string; name: string }>
 ): boolean => participants.length >= 2;
+
+const getSourceReferenceKey = (source: SourceReference): string =>
+  [
+    source.title.trim().toLowerCase(),
+    source.url?.trim().toLowerCase() ?? "",
+    source.domain?.trim().toLowerCase() ?? "",
+    source.provider?.trim().toLowerCase() ?? ""
+  ].join("::");
+
+const mergeSourceReferences = (
+  currentSources: SourceReference[] | undefined,
+  nextSources: SourceReference[] | undefined
+): SourceReference[] => {
+  const merged: SourceReference[] = [];
+  const seen = new Set<string>();
+
+  for (const source of [...(currentSources ?? []), ...(nextSources ?? [])]) {
+    const key = getSourceReferenceKey(source);
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    merged.push(source);
+  }
+
+  return merged;
+};
 
 const getIdentityParticipants = (event: LiveEvent): MatchIdentity["participants"] => {
   const contextParticipants =
@@ -287,13 +316,10 @@ const shouldAcceptLiveStateUpdate = (
 const preserveLiveStateSources = (
   currentState: LiveState,
   nextState: LiveState
-): LiveState =>
-  (nextState.sources?.length ?? 0) > 0 || (currentState.sources?.length ?? 0) === 0
-    ? nextState
-    : {
-        ...nextState,
-        sources: currentState.sources ?? []
-      };
+): LiveState => ({
+  ...nextState,
+  sources: mergeSourceReferences(currentState.sources, nextState.sources)
+});
 
 const isClearlyWeakLiveSnapshot = (state: LiveState): boolean => {
   const watchability = getSafeWatchability(state);
@@ -439,6 +465,9 @@ export const useLiveEvents = () => {
   const [trackerHistory, setTrackerHistory] = useState<TrackerHistoryPoint[]>(
     []
   );
+  const [trackedLiveSources, setTrackedLiveSources] = useState<SourceReference[]>(
+    []
+  );
   const [trackerPollingIntervalSeconds, setTrackerPollingIntervalSeconds] =
     useState(60);
   const [trackerUpdatesEnabled, setTrackerUpdatesEnabled] = useState(false);
@@ -495,6 +524,7 @@ export const useLiveEvents = () => {
     setTrackedLiveMatchId(null);
     setTrackedLiveSnapshot(null);
     setTrackerHistory([]);
+    setTrackedLiveSources([]);
     setTrackerUpdatesEnabled(false);
     setTrackerPollingIntervalSeconds(60);
     setTrackerCountdown(60);
@@ -660,6 +690,7 @@ export const useLiveEvents = () => {
   useEffect(() => {
     if (!trackedLiveMatchId) {
       setTrackerHistory([]);
+      setTrackedLiveSources([]);
       setTrackedLiveSnapshot(null);
       setTrackerError(null);
       setTrackerLoading(false);
@@ -761,6 +792,7 @@ export const useLiveEvents = () => {
     setTrackedLiveMatchId(null);
     setTrackedLiveSnapshot(null);
     setTrackerHistory([]);
+    setTrackedLiveSources([]);
     setTrackerUpdatesEnabled(false);
     setTrackerLoading(false);
     setTrackerError(null);
@@ -1197,7 +1229,7 @@ export const useLiveEvents = () => {
         trackedLiveSnapshot.live_state,
         nextState
       )
-        ? nextState
+        ? preserveLiveStateSources(trackedLiveSnapshot.live_state, nextState)
         : trackedLiveSnapshot.live_state;
 
       setEvents((current) =>
@@ -1221,6 +1253,9 @@ export const useLiveEvents = () => {
       );
       setTrackerHistory((current) =>
         appendTrackerHistory(current, acceptedState)
+      );
+      setTrackedLiveSources((current) =>
+        mergeSourceReferences(current, acceptedState.sources)
       );
       setTrackerCountdown(trackerPollingIntervalSeconds);
       setTrackerStatusMessage(
@@ -1370,6 +1405,7 @@ export const useLiveEvents = () => {
       setTrackedLiveMatchId(null);
       setTrackedLiveSnapshot(null);
       setTrackerHistory([]);
+      setTrackedLiveSources([]);
       setTrackerUpdatesEnabled(false);
       setTrackerCountdown(trackerPollingIntervalSeconds);
       setTrackerError(null);
@@ -1382,6 +1418,7 @@ export const useLiveEvents = () => {
       trackableEvents.find((event) => event.match_id === matchId) ?? null
     );
     setTrackerHistory([]);
+    setTrackedLiveSources([]);
     setTrackerCountdown(trackerPollingIntervalSeconds);
     setTrackerError(null);
     setTrackerStatusMessage("Preparing tracked match view...");
@@ -1410,6 +1447,7 @@ export const useLiveEvents = () => {
     events,
     trackableEvents,
     trackedLiveEvent,
+    trackedLiveSources,
     trackerHistory,
     upcomingEvents,
     liveLoading,

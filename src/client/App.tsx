@@ -41,6 +41,7 @@ export const App = () => {
     selectedLiveMatchDetail,
     selectedUpcomingMatchDetail,
     trackedLiveEvent,
+    trackedLiveSources,
     trackableEvents,
     trackerHistory,
     liveWarnings,
@@ -162,7 +163,7 @@ export const App = () => {
           </a>
         </nav>
 
-        {config ? (
+        {config && activePage !== "history" ? (
           <label className="page-controls__model-field">
             <span>Data Source</span>
             <select
@@ -554,6 +555,7 @@ export const App = () => {
             <LiveMatchTracker
               event={trackedLiveEvent}
               history={trackerHistory}
+              sourceReferences={trackedLiveSources}
             />
           ) : events.length > 0 && trackableEvents.length === 0 ? (
             <div className="empty-state">
